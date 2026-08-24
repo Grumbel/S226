@@ -166,7 +166,7 @@ def _print_advertisement(device: BLEDevice, advertisement_data: AdvertisementDat
     log.info("=" * 70)
 
 
-async def scan_only(scan_timeout: float) -> int:
+async def scan_only(scan_timeout: float, adapter: Optional[str] = None) -> int:
     """Continuously log every S226 advertisement until timeout."""
     count = 0
 
@@ -180,8 +180,12 @@ async def scan_only(scan_timeout: float) -> int:
         _print_advertisement(device, advertisement_data)
         log.info("(advertisement #%d)", count)
 
-    scanner = BleakScanner(detection_callback=detection_callback)
-    log.info("Scan-only mode: logging advertisements for %ss...", scan_timeout)
+    scanner = BleakScanner(detection_callback=detection_callback, adapter=adapter)
+    log.info(
+        "Scan-only mode: logging advertisements for %ss%s...",
+        scan_timeout,
+        f" (adapter={adapter})" if adapter else "",
+    )
     await scanner.start()
     try:
         await asyncio.sleep(scan_timeout)
@@ -223,19 +227,21 @@ async def connect_address(
     address: str,
     connect_timeout: float,
     connect_retries: int,
+    adapter: Optional[str] = None,
 ) -> Optional[BleakClient]:
     """Connect directly to a known address (no scan)."""
     last_error: Optional[BaseException] = None
     for attempt in range(1, connect_retries + 1):
         log.info("")
         log.info(
-            "Direct connect attempt %d/%d to %s (timeout=%ss)...",
+            "Direct connect attempt %d/%d to %s (timeout=%ss%s)...",
             attempt,
             connect_retries,
             address,
             connect_timeout,
+            f", adapter={adapter}" if adapter else "",
         )
-        client = BleakClient(address, timeout=connect_timeout)
+        client = BleakClient(address, timeout=connect_timeout, adapter=adapter)
         try:
             await client.connect()
             services = await ensure_services(client)
@@ -277,6 +283,7 @@ async def find_and_connect(
     scan_timeout: float,
     connect_timeout: float,
     connect_retries: int,
+    adapter: Optional[str] = None,
 ) -> Optional[BleakClient]:
     """
     Scan and connect immediately when the S226 appears.
@@ -301,12 +308,13 @@ async def find_and_connect(
             _print_advertisement(device, advertisement_data)
             found.set()
 
-    scanner = BleakScanner(detection_callback=detection_callback)
+    scanner = BleakScanner(detection_callback=detection_callback, adapter=adapter)
     log.info(
-        "Scanning for S226 (timeout=%ss, connect_timeout=%ss, retries=%d)...",
+        "Scanning for S226 (timeout=%ss, connect_timeout=%ss, retries=%d%s)...",
         scan_timeout,
         connect_timeout,
         connect_retries,
+        f", adapter={adapter}" if adapter else "",
     )
     await scanner.start()
 
@@ -352,7 +360,7 @@ async def find_and_connect(
             # Discover the full GATT database (no services= filter). A
             # restricted UUID list has been observed to hang discovery on
             # some BlueZ/Bleak combinations.
-            client = BleakClient(device, timeout=connect_timeout)
+            client = BleakClient(device, timeout=connect_timeout, adapter=adapter)
             try:
                 await client.connect()
                 if not client.is_connected:
@@ -714,6 +722,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip the Veepoo 0xA1 bind packet after connect",
     )
     parser.add_argument(
+        "--adapter",
+        default=None,
+        metavar="HCI",
+        help="Bluetooth adapter name (e.g. hci2). Default: BlueZ default adapter",
+    )
+    parser.add_argument(
         "--scan-only",
         action="store_true",
         help="Only log advertisements; do not attempt to connect",
@@ -736,22 +750,27 @@ async def main(args: argparse.Namespace) -> int:
         log.info("Started at %s", datetime.now().isoformat(timespec="seconds"))
 
     if args.scan_only:
-        return await scan_only(args.scan_timeout)
+        return await scan_only(args.scan_timeout, adapter=args.adapter)
 
     client: Optional[BleakClient] = None
 
     try:
+        if args.adapter:
+            log.info("Using adapter %s", args.adapter)
+
         if args.address:
             client = await connect_address(
                 args.address,
                 connect_timeout=args.connect_timeout,
                 connect_retries=args.connect_retries,
+                adapter=args.adapter,
             )
         else:
             client = await find_and_connect(
                 scan_timeout=args.scan_timeout,
                 connect_timeout=args.connect_timeout,
                 connect_retries=args.connect_retries,
+                adapter=args.adapter,
             )
 
         if client is None:
