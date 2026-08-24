@@ -391,13 +391,28 @@ async def dump_characteristic(
             log.info("      READ FAILED: %s", e)
 
 
+async def ensure_services(client: BleakClient):
+    """Return the GATT service collection, refreshing if needed."""
+    try:
+        services = client.services
+        # Accessing .services can raise if discovery never completed.
+        _ = list(services)
+        if list(services):
+            return services
+    except Exception:
+        pass
+    return await client.get_services()
+
+
 async def dump_gatt(client: BleakClient) -> None:
     log.info("")
     log.info("=" * 70)
     log.info("GATT DATABASE")
     log.info("=" * 70)
 
-    for service in client.services:
+    services = await ensure_services(client)
+
+    for service in services:
         log.info("")
         log.info("SERVICE %s", uuid_label(str(service.uuid)))
         log.info("  handle: %s", service.handle)
@@ -415,8 +430,9 @@ async def subscribe_notifications(
     log.info("=" * 70)
 
     notify_chars: list[BleakGATTCharacteristic] = []
+    services = await ensure_services(client)
 
-    for service in client.services:
+    for service in services:
         for characteristic in service.characteristics:
             properties = characteristic.properties
             if "notify" in properties or "indicate" in properties:
