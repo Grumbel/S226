@@ -411,8 +411,14 @@ The immediate-connect behavior is important because the watch appears to sleep s
 ### Usage
 
 ```bash
-# Default: scan 30s, connect 10s, listen 30s
+# Default: scan 30s, connect 25s × 3 retries, listen 30s
 nix run .#
+
+# Long scan window (watch only advertises briefly after power-on / wake)
+nix run .# -- --scan-timeout 300 --connect-timeout 30 --connect-retries 5
+
+# Only log advertisements (no connect attempt)
+nix run .# -- --scan-only --scan-timeout 120
 
 # Longer listen window while interacting with the watch
 nix run .# -- --listen 120
@@ -429,12 +435,32 @@ Available flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--scan-timeout SECONDS` | 30 | How long to wait for an advertisement |
-| `--connect-timeout SECONDS` | 10 | Connection establishment timeout |
+| `--connect-timeout SECONDS` | 25 | Timeout for each connection attempt |
+| `--connect-retries N` | 3 | Retry connect this many times on failure |
 | `--listen SECONDS` | 30 | How long to stay connected and print notifications |
 | `--log-file PATH` | (none) | Mirror all console output to a file |
 | `--no-gatt-dump` | false | Skip reading/printing the full GATT database |
+| `--scan-only` | false | Log advertisements only; do not connect |
 
 Known standard and vendor UUIDs are annotated with human-readable names in the output to make logs easier to scan.
+
+### Connection reliability notes
+
+The S226 advertises only for a short window. After the first power-on it is often easier to catch; afterwards it may sleep until the user interacts with the watch or the H-Band app wakes it.
+
+Connection timeouts are common when the advertisement ends before BlueZ finishes the connection. Use a long `--scan-timeout`, a generous `--connect-timeout`, and several `--connect-retries`. Prefer connecting immediately on advertisement (what this tool does) rather than a separate scan-then-connect.
+
+### Veepoo / H-Band protocol
+
+The companion app is **H-Band** (Veepoo Technology). After a successful BLE GATT connection the official SDK **must** perform a password verification step (`confirmDevicePwd`) with the default password `"0000"`. Only after that does the device expose full functionality and stay usefully connected.
+
+The binary command format for that password exchange lives inside the closed-source Veepoo `vpprotocol` library (command family reported as `0xF0` in secondary documentation). Until we capture real H-Band ↔ S226 HCI traffic or reverse the packet layout, Linux-side tools can only:
+
+1. Obtain a stable GATT connection (this tool).
+2. Dump services / characteristics / notifications.
+3. Observe whether the watch disconnects quickly without the auth packet.
+
+Capturing phone-side HCI logs while H-Band connects is the highest-value next experiment.
 
 ## Current Reverse Engineering Targets
 
@@ -508,17 +534,18 @@ Determine whether its 19-byte payload changes with:
 * activity
 * connection state
 
-### 5. Authentication
+### 5. Authentication (Veepoo password)
 
-Determine whether H-Band:
+H-Band / Veepoo requires a post-connect password verification (`confirmDevicePwd`) with default password `"0000"`. Without it the device typically will not stay usefully connected or will refuse further commands.
 
-* uses BLE pairing/bonding
-* writes an initialization packet
-* performs a challenge/response
-* sends a device identifier
-* sends a fixed authentication token
+Determine:
 
-before the watch starts sending useful data.
+* exact binary packet written for password `"0000"` (likely on the vendor write characteristic under `f0080001` or `f0020001`)
+* whether time-sync is bundled in the same exchange
+* which notification characteristic returns the capability / status response
+* whether BLE-level pairing/bonding is ever used (current observations say no)
+
+A phone HCI capture while H-Band connects is the practical way to obtain the packet bytes.
 
 ## Goal
 
