@@ -213,49 +213,71 @@ async def find_and_connect(
     )
     await scanner.start()
 
+    device: Optional[BLEDevice] = None
     try:
         try:
             await asyncio.wait_for(found.wait(), timeout=scan_timeout)
         except asyncio.TimeoutError:
             log.info("S226 not found.")
             return None
-
         device = result["device"]
-
-        # IMPORTANT: use the BLEDevice from the advertisement.
-        # The S226 uses a random address and often stops advertising
-        # shortly after discovery; a second scan would miss it.
-
-        last_error: Optional[BaseException] = None
-        for attempt in range(1, connect_retries + 1):
-            log.info("")
-            log.info(
-                "Connect attempt %d/%d to %s (timeout=%ss)...",
-                attempt,
-                connect_retries,
-                device.address,
-                connect_timeout,
-            )
-            client = BleakClient(device, timeout=connect_timeout)
-            try:
-                await client.connect()
-                log.info("Connected: %s", client.is_connected)
-                return client
-            except Exception as e:
-                last_error = e
-                log.info("  attempt failed: %s: %s", type(e).__name__, e)
-                try:
-                    await client.disconnect()
-                except Exception:
-                    pass
-                if attempt < connect_retries:
-                    await asyncio.sleep(0.3)
-
-        assert last_error is not None
-        raise last_error
-
     finally:
+        # Stop scanning before connecting. Leaving the scanner running
+        # while connecting can race with BlueZ service discovery.
         await scanner.stop()
+
+    assert device is not None
+
+    # IMPORTANT: use the BLEDevice from the advertisement.
+    # The S226 uses a random address and often stops advertising
+    # shortly after discovery; a second scan would miss it.
+
+    last_error: Optional[BaseException] = None
+    for attempt in range(1, connect_retries + 1):
+        log.info("")
+        log.info(
+            "Connect attempt %d/%d to %s (timeout=%ss)...",
+            attempt,
+            connect_retries,
+            device.address,
+            connect_timeout,
+        )
+        client = BleakClient(device, timeout=connect_timeout)
+        try:
+            await client.connect()
+            if not client.is_connected:
+                raise RuntimeError("connect() returned but is_connected is False")
+
+            # Force service discovery and wait until the cache is populated.
+            # Without this, accessing client.services can raise
+            # "Service Discovery has not been performed yet".
+            services = await client.get_services()
+            n_services = len(list(services))
+            n_chars = sum(len(s.characteristics) for s in services)
+            log.info(
+                "Connected: %s  (services=%d, characteristics=%d)",
+                client.is_connected,
+                n_services,
+                n_chars,
+            )
+            if n_services == 0:
+                raise RuntimeError("connected but zero GATT services discovered")
+            return client
+        except Exception as e:
+            last_error = e
+            log.info("  attempt failed: %s: %s", type(e).__name__, e)
+            try:
+                if client.is_connected:
+                    await client.disconnect()
+            except Exception:
+                pass
+            if attempt < connect_retries:
+                # Brief pause; the watch may still be connectable after a
+                # failed discovery attempt.
+                await asyncio.sleep(0.5)
+
+    assert last_error is not None
+    raise last_error
 
 
 async def dump_descriptor(client: BleakClient, descriptor) -> None:
@@ -426,10 +448,10 @@ async def main(args: argparse.Namespace) -> int:
             return 1
 
         log.info("")
-        log.info("Connected: %s", client.is_connected)
+        log.info("Connected and services ready.")
 
-        # Give BlueZ/Bleak a moment to finish service discovery.
-        await asyncio.sleep(0.5)
+        # Brief settle so BlueZ finishes any remaining bookkeeping.
+        await asyncio.sleep(0.2)
 
         if not args.no_gatt_dump:
             await dump_gatt(client)
