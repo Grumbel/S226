@@ -20,11 +20,13 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-# Baked in by the Nix flake via substituteInPlace --subst-var-by.
-# In a plain source checkout the token is left as-is and we fall back
-# to the VERSION file contents without git metadata.
+# Nix installPhase replaces @S226_VERSION@ with the full version
+# (e.g. 0.2.0-dev.15+g98f3a01). Only this one occurrence of the token
+# may exist in the file — a second copy in a fallback comparison would
+# also be substituted and then always match, resetting the version.
 __version__ = "@S226_VERSION@"
-if __version__ == "@S226_VERSION@":
+if __version__.startswith("@") and __version__.endswith("@"):
+    # Token not substituted: plain source checkout / non-Nix run.
     __version__ = "0.2.0-dev"
 
 

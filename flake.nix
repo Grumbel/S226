@@ -16,9 +16,13 @@
         nixpkgs.lib.genAttrs systems (system:
           f (import nixpkgs { inherit system; }));
 
+      # Single source of truth: ./VERSION (e.g. "0.2.0-dev").
       versionBase =
         nixpkgs.lib.strings.removeSuffix "\n" (builtins.readFile ./VERSION);
-      gitRev = "${self.shortRev or self.dirtyShortRev or "dirty"}";
+
+      # Development builds: 0.2.0-dev.<revCount>+g<shortRev>
+      # Release builds (no "-dev" in VERSION): use VERSION as-is.
+      gitRev = self.shortRev or self.dirtyShortRev or "dirty";
       isDev = nixpkgs.lib.strings.hasInfix "-dev" versionBase;
       version =
         if isDev then
@@ -34,20 +38,40 @@
 
           src = ./.;
 
-          pyproject = false;
+          # Single-file script; do not expect setuptools/pyproject.
+          format = "other";
 
           propagatedBuildInputs = with pkgs.python3Packages; [
             bleak
           ];
 
-          # Bake the full version into the installed script.
-          # Use `substitute` (not postPatch) so the token is replaced
-          # when writing $out/bin/s226 — this is the reliable Nix pattern.
+          # Embed the full version string into the installed script.
+          # sed + explicit checks: build fails if the token is missing or
+          # substitution does not take effect (no silent fallback).
           installPhase = ''
+            runHook preInstall
+
             mkdir -p $out/bin
-            substitute s226.py $out/bin/s226 \
-              --subst-var-by S226_VERSION ${pkgs.lib.escapeShellArg version}
+
+            if ! grep -q '@S226_VERSION@' s226.py; then
+              echo "error: @S226_VERSION@ token missing from s226.py" >&2
+              exit 1
+            fi
+
+            sed "s|@S226_VERSION@|${version}|g" s226.py > $out/bin/s226
+
+            if grep -q '@S226_VERSION@' $out/bin/s226; then
+              echo "error: version token was not substituted" >&2
+              exit 1
+            fi
+            if ! grep -qF '${version}' $out/bin/s226; then
+              echo "error: expected version string not found in installed script" >&2
+              exit 1
+            fi
+
             chmod +x $out/bin/s226
+
+            runHook postInstall
           '';
         };
       });
