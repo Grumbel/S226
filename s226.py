@@ -235,18 +235,7 @@ async def connect_address(
             address,
             connect_timeout,
         )
-        client = BleakClient(
-            address,
-            timeout=connect_timeout,
-            services=[
-                "00001800-0000-1000-8000-00805f9b34fb",
-                "00001801-0000-1000-8000-00805f9b34fb",
-                "f0080001-0451-4000-b000-000000000000",
-                "f0020001-0451-4000-b000-000000000000",
-                "0000fee7-0000-1000-8000-00805f9b34fb",
-                "00001812-0000-1000-8000-00805f9b34fb",
-            ],
-        )
+        client = BleakClient(address, timeout=connect_timeout)
         try:
             await client.connect()
             services = await ensure_services(client)
@@ -360,20 +349,10 @@ async def find_and_connect(
                 connect_timeout,
             )
 
-            # Limit discovery to services we care about so BlueZ finishes
-            # faster; the watch often drops the link mid-discovery.
-            client = BleakClient(
-                device,
-                timeout=connect_timeout,
-                services=[
-                    "00001800-0000-1000-8000-00805f9b34fb",
-                    "00001801-0000-1000-8000-00805f9b34fb",
-                    "f0080001-0451-4000-b000-000000000000",
-                    "f0020001-0451-4000-b000-000000000000",
-                    "0000fee7-0000-1000-8000-00805f9b34fb",
-                    "00001812-0000-1000-8000-00805f9b34fb",
-                ],
-            )
+            # Discover the full GATT database (no services= filter). A
+            # restricted UUID list has been observed to hang discovery on
+            # some BlueZ/Bleak combinations.
+            client = BleakClient(device, timeout=connect_timeout)
             try:
                 await client.connect()
                 if not client.is_connected:

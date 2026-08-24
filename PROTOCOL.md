@@ -102,6 +102,22 @@ command:
 
 Exact semantics still TBD.
 
+## Connection exclusivity
+
+The S226 appears to allow only **one** active central at a time.
+
+If H-Band (or the phone’s Bluetooth stack) still holds a link — or even a
+fresh bond from a recent session — Linux connects will time out while
+advertisements continue. Before testing with `s226`:
+
+1. Force-stop H-Band
+2. Forget / unpair the S226 in Android Bluetooth settings (optional but helps)
+3. Toggle phone Bluetooth off, or leave the phone out of range
+4. Power-cycle the watch if connects still time out at strong RSSI
+
+Successful earlier Linux sessions used RSSI roughly −42…−56 with the phone
+not connected.
+
 ## Implementation status (`s226`)
 
 After a successful connect the tool:
