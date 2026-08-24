@@ -589,15 +589,17 @@ async def veepoo_handshake(client: BleakClient) -> bool:
         if data and data[0] == 0xA1:
             log.info("  ↑ 0xA1 response (auth/bind status); MAC may follow in payload")
 
+    notify_ok = False
     try:
         await client.start_notify(notify_char, notification_handler)
         log.info("  subscribed: %s", uuid_label(str(notify_char.uuid)))
+        notify_ok = True
     except Exception as e:
         log.info("  start_notify failed: %s: %s", type(e).__name__, e)
-        return False
+        # Still try the bind write; some firmwares accept 0xA1 without CCCD.
 
     if not client.is_connected:
-        log.info("  disconnected after subscribe")
+        log.info("  disconnected before 0xA1 write")
         return False
 
     packet = build_a1_bind_packet()
@@ -605,7 +607,7 @@ async def veepoo_handshake(client: BleakClient) -> bool:
     try:
         # H-Band uses Write Command (no response), not Write Request.
         await client.write_gatt_char(write_char, packet, response=False)
-        log.info("  0xA1 bind packet sent")
+        log.info("  0xA1 bind packet sent (notify=%s)", notify_ok)
         return True
     except Exception as e:
         log.info("  write failed: %s: %s", type(e).__name__, e)
@@ -779,20 +781,22 @@ async def main(args: argparse.Namespace) -> int:
         log.info("")
         log.info("Connected and services ready.")
 
-        # Order matters: the watch drops unauthenticated links quickly.
-        # 1) Structure dump (local, no ATT reads)
-        # 2) Veepoo 0xA1 bind (subscribe f0080002 + write f0080003)
+        # Order matters: the watch drops unauthenticated links within ~1s.
+        # 1) Veepoo 0xA1 bind immediately (subscribe f0080002 + write f0080003)
+        # 2) Structure dump (local)
         # 3) Subscribe remaining notify characteristics
         # 4) Optional value reads last
-        if not args.no_gatt_dump:
-            await dump_gatt(client, read_values=False)
-
         if not args.no_auth and client.is_connected:
             await veepoo_handshake(client)
         elif args.no_auth:
             log.info("Skipping Veepoo 0xA1 bind (--no-auth)")
 
-        subscribed = await subscribe_notifications(client)
+        if not args.no_gatt_dump and client.is_connected:
+            await dump_gatt(client, read_values=False)
+
+        subscribed = []
+        if client.is_connected:
+            subscribed = await subscribe_notifications(client)
 
         if (
             not args.no_gatt_dump
