@@ -435,12 +435,13 @@ Available flags:
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--scan-timeout SECONDS` | 30 | How long to wait for an advertisement |
-| `--connect-timeout SECONDS` | 25 | Timeout for each connection attempt |
+| `--connect-timeout SECONDS` | 40 | Timeout for each connection attempt |
 | `--connect-retries N` | 3 | Retry connect this many times on failure |
 | `--listen SECONDS` | 30 | How long to stay connected and print notifications |
 | `--log-file PATH` | (none) | Mirror all console output to a file |
 | `--no-gatt-dump` | false | Skip reading/printing the full GATT database |
 | `--scan-only` | false | Log advertisements only; do not connect |
+| `--address ADDR` | (none) | Skip scan; connect directly to this address |
 
 Known standard and vendor UUIDs are annotated with human-readable names in the output to make logs easier to scan.
 
@@ -452,11 +453,25 @@ Connection timeouts are common when the advertisement ends before BlueZ finishes
 
 Observed failure modes:
 
-* `TimeoutError` / connect timeout — advertisement window already closed.
-* `failed to discover services, device disconnected` — GATT link came up but the watch dropped it before (or during) service discovery. Retries sometimes help; catching the longer post-power-on window helps more.
-* `Service Discovery has not been performed yet` — race fixed by explicitly calling `get_services()` after `connect()` and only proceeding when services are populated.
+* Device only appears at very short range (e.g. ~10 cm from the USB dongle). Treat this as a weak antenna / RF path issue on the adapter or watch; keep the watch against the dongle while testing.
+* `TimeoutError` / connect timeout after a successful find — the watch is only connectable for a brief moment after each advertisement. The tool now **keeps scanning while connecting** so BlueZ does not drop the random-address device from its cache, and retries both the live `BLEDevice` object and a plain address-string connect.
+* `failed to discover services, device disconnected` — GATT link came up but the watch dropped it before (or during) service discovery.
+* `Service Discovery has not been performed yet` — fixed by calling `get_services()` after `connect()`.
 
-The scanner is stopped before the connect attempts begin so BlueZ is not still scanning while resolving the GATT database.
+Useful parallel diagnostics while connecting:
+
+```bash
+sudo btmon | tee btmon-$(date +%Y%m%d-%H%M%S).log
+```
+
+Also try disabling USB autosuspend for the Realtek adapter if connects are flaky:
+
+```bash
+# find the device
+lsusb
+# then, for the corresponding sysfs path:
+echo on | sudo tee /sys/bus/usb/devices/.../power/control
+```
 
 ### Veepoo / H-Band protocol
 
