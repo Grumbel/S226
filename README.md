@@ -440,6 +440,7 @@ Available flags:
 | `--listen SECONDS` | 30 | How long to stay connected and print notifications |
 | `--log-file PATH` | (none) | Mirror all console output to a file |
 | `--no-gatt-dump` | false | Skip reading/printing the full GATT database |
+| `--read-values` | false | Also read char/descriptor values (often disconnects) |
 | `--scan-only` | false | Log advertisements only; do not connect |
 | `--address ADDR` | (none) | Skip scan; connect directly to this address |
 

@@ -426,12 +426,29 @@ async def dump_descriptor(client: BleakClient, descriptor) -> None:
 
 
 async def dump_characteristic(
-    client: BleakClient, characteristic: BleakGATTCharacteristic
+    client: BleakClient,
+    characteristic: BleakGATTCharacteristic,
+    *,
+    read_values: bool,
 ) -> None:
     log.info("")
     log.info("    Characteristic %s", uuid_label(str(characteristic.uuid)))
     log.info("      handle:     %s", characteristic.handle)
     log.info("      properties: %s", ", ".join(characteristic.properties))
+
+    # Structure only: list descriptor UUIDs/handles, no GATT reads.
+    for descriptor in characteristic.descriptors:
+        log.info(
+            "      Descriptor %s  handle=%s",
+            uuid_label(str(descriptor.uuid)),
+            descriptor.handle,
+        )
+
+    if not read_values:
+        return
+
+    if not client.is_connected:
+        return
 
     for descriptor in characteristic.descriptors:
         await dump_descriptor(client, descriptor)
@@ -452,14 +469,18 @@ async def dump_characteristic(
 
 
 
-async def dump_gatt(client: BleakClient) -> None:
+async def dump_gatt(client: BleakClient, *, read_values: bool) -> None:
     log.info("")
     log.info("=" * 70)
-    log.info("GATT DATABASE")
+    log.info(
+        "GATT DATABASE%s",
+        "" if read_values else " (structure only, no reads)",
+    )
     log.info("=" * 70)
 
-    # Services were already resolved during connect. Do not poll again —
-    # the watch often disconnects within a second of the link coming up.
+    # Services were already resolved during connect. Listing is local and
+    # fast; avoid GATT reads until the full tree is printed — the watch
+    # often drops the link on the first descriptor/value read.
     try:
         services = list(client.services)
     except Exception as e:
@@ -479,7 +500,9 @@ async def dump_gatt(client: BleakClient) -> None:
                 log.info("Disconnected during GATT dump; stopping.")
                 return
             try:
-                await dump_characteristic(client, characteristic)
+                await dump_characteristic(
+                    client, characteristic, read_values=read_values
+                )
             except Exception as e:
                 log.info(
                     "  characteristic dump failed: %s: %s",
@@ -576,7 +599,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-gatt-dump",
         action="store_true",
-        help="Skip full GATT dump (only subscribe and listen)",
+        help="Skip GATT dump (only subscribe and listen)",
+    )
+    parser.add_argument(
+        "--read-values",
+        action="store_true",
+        help="After structure dump, also read characteristic/descriptor values "
+        "(often causes the watch to disconnect)",
     )
     parser.add_argument(
         "--scan-only",
@@ -625,11 +654,23 @@ async def main(args: argparse.Namespace) -> int:
         log.info("")
         log.info("Connected and services ready.")
 
-        # Dump immediately — the watch often drops the link within a second.
+        # 1) Structure dump (local, no ATT reads) so we see all UUIDs/properties
+        #    even if the link dies immediately after.
+        # 2) Subscribe to notifications as soon as possible.
+        # 3) Optional value reads last — those often trigger disconnect.
         if not args.no_gatt_dump:
-            await dump_gatt(client)
+            await dump_gatt(client, read_values=False)
 
         subscribed = await subscribe_notifications(client)
+
+        if (
+            not args.no_gatt_dump
+            and args.read_values
+            and client.is_connected
+        ):
+            log.info("")
+            log.info("Reading characteristic/descriptor values...")
+            await dump_gatt(client, read_values=True)
 
         log.info("")
         log.info("=" * 70)
