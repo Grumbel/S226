@@ -40,15 +40,13 @@
             bleak
           ];
 
-          # Bake the full version string into s226.py at build time.
-          # --subst-var-by replaces @S226_VERSION@ with the value.
-          postPatch = ''
-            substituteInPlace s226.py --subst-var-by S226_VERSION ${pkgs.lib.escapeShellArg version}
-          '';
-
+          # Bake the full version into the installed script.
+          # Use `substitute` (not postPatch) so the token is replaced
+          # when writing $out/bin/s226 — this is the reliable Nix pattern.
           installPhase = ''
             mkdir -p $out/bin
-            cp s226.py $out/bin/s226
+            substitute s226.py $out/bin/s226 \
+              --subst-var-by S226_VERSION ${pkgs.lib.escapeShellArg version}
             chmod +x $out/bin/s226
           '';
         };

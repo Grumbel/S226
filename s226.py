@@ -457,15 +457,34 @@ async def dump_gatt(client: BleakClient) -> None:
     log.info("GATT DATABASE")
     log.info("=" * 70)
 
-    services = await ensure_services(client)
+    # Services were already resolved during connect. Do not poll again —
+    # the watch often disconnects within a second of the link coming up.
+    try:
+        services = list(client.services)
+    except Exception as e:
+        log.info("Cannot access services: %s: %s", type(e).__name__, e)
+        return
 
     for service in services:
+        if not client.is_connected:
+            log.info("Disconnected during GATT dump; stopping.")
+            break
         log.info("")
         log.info("SERVICE %s", uuid_label(str(service.uuid)))
         log.info("  handle: %s", service.handle)
 
         for characteristic in service.characteristics:
-            await dump_characteristic(client, characteristic)
+            if not client.is_connected:
+                log.info("Disconnected during GATT dump; stopping.")
+                return
+            try:
+                await dump_characteristic(client, characteristic)
+            except Exception as e:
+                log.info(
+                    "  characteristic dump failed: %s: %s",
+                    type(e).__name__,
+                    e,
+                )
 
 
 async def subscribe_notifications(
@@ -477,7 +496,11 @@ async def subscribe_notifications(
     log.info("=" * 70)
 
     notify_chars: list[BleakGATTCharacteristic] = []
-    services = await ensure_services(client)
+    try:
+        services = list(client.services)
+    except Exception as e:
+        log.info("Cannot access services for notify: %s: %s", type(e).__name__, e)
+        return []
 
     for service in services:
         for characteristic in service.characteristics:
@@ -601,9 +624,7 @@ async def main(args: argparse.Namespace) -> int:
         log.info("")
         log.info("Connected and services ready.")
 
-        # Brief settle so BlueZ finishes any remaining bookkeeping.
-        await asyncio.sleep(0.2)
-
+        # Dump immediately — the watch often drops the link within a second.
         if not args.no_gatt_dump:
             await dump_gatt(client)
 
