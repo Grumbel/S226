@@ -486,119 +486,39 @@ The binary command format for that password exchange lives inside the closed-sou
 
 Capturing phone-side HCI logs while H-Band connects is the highest-value next experiment.
 
-**Current status (observed repeatedly):** the ACL link comes up, then the
-watch disconnects during GATT service discovery. This is systematic, not a
-range issue. Further connect-retry tuning is unlikely to help until the
-Veepoo password write is reproduced from an HCI capture.
+**Current status:** connect is intermittent (watch often ignores link
+requests). When the ACL link does come up, a Veepoo **0xA1 bind packet**
+must be written quickly or the watch drops the connection. A full phone
+HCI capture of H-Band is documented in [PROTOCOL.md](PROTOCOL.md).
 
-## Current Reverse Engineering Targets
+## Protocol summary
 
-The next useful things to determine are:
+See **[PROTOCOL.md](PROTOCOL.md)** for the HCI-derived details. Short version:
 
-### 1. Characteristic properties
+| Direction | Characteristic | Role |
+|-----------|----------------|------|
+| watch → phone | `f0080002` | notifications |
+| phone → watch | `f0080003` | Write Command commands |
 
-Determine which of these are:
+After connect the tool enables notify on `f0080002` and sends a 20-byte
+`0xA1` packet (time + profile bytes) to `f0080003`. Use `--no-auth` to
+skip that for experiments.
 
-```text
-read
-write
-write-without-response
-notify
-indicate
-```
+## Remaining reverse-engineering targets
 
-especially:
-
-```text
-f0080002
-f0080003
-
-f0020002
-f0020003
-
-fea1
-fea2
-fec9
-```
-
-### 2. Notification traffic
-
-Subscribe to all notification characteristics and observe what the watch sends without any interaction.
-
-Then repeat while performing actions such as:
-
-* opening the watch menus
-* changing screens
-* starting/stopping activity tracking
-* measuring heart rate
-* changing the displayed mode
-* triggering an alarm
-* moving around
-* changing the watch face
-
-The goal is to correlate packets with actions.
-
-### 3. H-Band traffic
-
-The most useful next experiment would be capturing the actual BLE traffic between:
-
-```text
-H-Band ↔ S226
-```
-
-while performing known operations.
-
-A Bluetooth HCI capture from the phone would allow comparison with the Linux-generated traffic.
-
-### 4. Advertising data
-
-The `0xfcf1` service data should be monitored over time.
-
-Determine whether its 19-byte payload changes with:
-
-* battery level
-* steps
-* heart rate
-* time
-* activity
-* connection state
-
-### 5. Authentication (Veepoo password)
-
-H-Band / Veepoo requires a post-connect password verification (`confirmDevicePwd`) with default password `"0000"`. Without it the device typically will not stay usefully connected or will refuse further commands.
-
-Determine:
-
-* exact binary packet written for password `"0000"` (likely on the vendor write characteristic under `f0080001` or `f0020001`)
-* whether time-sync is bundled in the same exchange
-* which notification characteristic returns the capability / status response
-* whether BLE-level pairing/bonding is ever used (current observations say no)
-
-A phone HCI capture while H-Band connects is the practical way to obtain the packet bytes.
+* Minimal 0xA1 payload; meaning of notification opcodes (`0xA7`, `0xAD`, …)
+* Command set on `f0080003` (`d8`, `f4`, `aa`, `d1`/`d3`/`d4`, …)
+* Role of services `f002` and `fee7` / HID
+* Correlate notifications with UI actions on the watch
+* Advertising / manufacturer data fields over time
 
 ## Goal
 
-The eventual goal is a standalone Linux implementation capable of communicating with the S226 without H-Band, ideally supporting:
+Standalone Linux tool path:
 
 ```text
-connect
-    ↓
-authenticate (if necessary)
-    ↓
-read device information
-    ↓
-read battery
-    ↓
-read activity/steps
-    ↓
-read heart-rate data
-    ↓
-read/write configuration
-    ↓
-possibly synchronize time
+scan → connect → 0xA1 bind → notifications → commands (steps, HR, …)
 ```
-
-The protocol should first be understood from passive observations before attempting arbitrary writes to the watch.
 
 ```
 ```

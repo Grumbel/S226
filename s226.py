@@ -32,6 +32,13 @@ if __version__.startswith("@") and __version__.endswith("@"):
 WATCH_NAME = "S226"
 MANUFACTURER_ID = 0xF8F8
 
+# Veepoo / H-Band vendor service (from phone HCI capture, 2026-08-24)
+UUID_F008_SERVICE = "f0080001-0451-4000-b000-000000000000"
+UUID_F008_NOTIFY = "f0080002-0451-4000-b000-000000000000"  # watch → phone
+UUID_F008_WRITE = "f0080003-0451-4000-b000-000000000000"  # phone → watch
+# Handles observed on this S226 unit (may differ on other firmwares):
+#   notify value 0x000d, CCCD 0x000e, write value 0x0011
+
 # Well-known BLE UUIDs for nicer output
 UUID_NAMES: dict[str, str] = {
     # Services
@@ -64,8 +71,8 @@ UUID_NAMES: dict[str, str] = {
     "0000fea1-0000-1000-8000-00805f9b34fb": "fea1",
     "0000fea2-0000-1000-8000-00805f9b34fb": "fea2",
     "0000fec9-0000-1000-8000-00805f9b34fb": "fec9",
-    "f0080002-0451-4000-b000-000000000000": "f0080002",
-    "f0080003-0451-4000-b000-000000000000": "f0080003",
+    "f0080002-0451-4000-b000-000000000000": "f0080002 (notify)",
+    "f0080003-0451-4000-b000-000000000000": "f0080003 (write)",
     "f0020002-0451-4000-b000-000000000000": "f0020002",
     "f0020003-0451-4000-b000-000000000000": "f0020003",
     # Descriptors
@@ -511,6 +518,113 @@ async def dump_gatt(client: BleakClient, *, read_values: bool) -> None:
                 )
 
 
+
+def build_a1_bind_packet(when: Optional[datetime] = None) -> bytes:
+    """
+    Build the 20-byte 0xA1 bind / auth packet observed from H-Band.
+
+    Capture (btsnoop, H-Band → S226):
+      a1 00 00 00 07 ea 08 18 10 18 1d 01 01 04 00 00 00 00 00 00
+               ^^^^ year  ^^^^^^^^ datetime     ^^^^^^^^ profile?
+
+    Year is big-endian. Trailing 01 01 04 matches H-Band profile bytes;
+    keep them for now until a minimal working subset is known.
+    """
+    when = when or datetime.now()
+    year = when.year
+    pkt = bytearray(20)
+    pkt[0] = 0xA1
+    pkt[1] = 0x00
+    pkt[2] = 0x00
+    pkt[3] = 0x00
+    pkt[4] = (year >> 8) & 0xFF
+    pkt[5] = year & 0xFF
+    pkt[6] = when.month
+    pkt[7] = when.day
+    pkt[8] = when.hour
+    pkt[9] = when.minute
+    pkt[10] = when.second
+    pkt[11] = 0x01
+    pkt[12] = 0x01
+    pkt[13] = 0x04
+    # remainder already zero
+    return bytes(pkt)
+
+
+def find_char_by_uuid(
+    client: BleakClient, uuid: str
+) -> Optional[BleakGATTCharacteristic]:
+    target = uuid.lower()
+    try:
+        services = list(client.services)
+    except Exception:
+        return None
+    for service in services:
+        for characteristic in service.characteristics:
+            if str(characteristic.uuid).lower() == target:
+                return characteristic
+    return None
+
+
+async def veepoo_handshake(client: BleakClient) -> bool:
+    """
+    Reproduce the H-Band post-connect sequence from HCI capture:
+
+      1. Subscribe to f0080002 notifications (CCCD 0x000e = 01 00)
+      2. Write_Cmd to f0080003 with the 20-byte 0xA1 bind packet
+
+    Returns True if the write was issued successfully.
+    """
+    log.info("")
+    log.info("=" * 70)
+    log.info("VEEPOO HANDSHAKE (0xA1 bind)")
+    log.info("=" * 70)
+
+    notify_char = find_char_by_uuid(client, UUID_F008_NOTIFY)
+    write_char = find_char_by_uuid(client, UUID_F008_WRITE)
+
+    if notify_char is None:
+        log.info("  missing notify characteristic %s", UUID_F008_NOTIFY)
+        return False
+    if write_char is None:
+        log.info("  missing write characteristic %s", UUID_F008_WRITE)
+        return False
+
+    def notification_handler(sender: BleakGATTCharacteristic, data: bytearray) -> None:
+        now = time.strftime("%H:%M:%S")
+        log.info(
+            "[%s] NOTIFY %s: %s (%d bytes)",
+            now,
+            uuid_label(str(sender.uuid)),
+            hexstr(data),
+            len(data),
+        )
+        if data and data[0] == 0xA1:
+            log.info("  ↑ 0xA1 response (auth/bind status); MAC may follow in payload")
+
+    try:
+        await client.start_notify(notify_char, notification_handler)
+        log.info("  subscribed: %s", uuid_label(str(notify_char.uuid)))
+    except Exception as e:
+        log.info("  start_notify failed: %s: %s", type(e).__name__, e)
+        return False
+
+    if not client.is_connected:
+        log.info("  disconnected after subscribe")
+        return False
+
+    packet = build_a1_bind_packet()
+    log.info("  write %s: %s", uuid_label(str(write_char.uuid)), hexstr(packet))
+    try:
+        # H-Band uses Write Command (no response), not Write Request.
+        await client.write_gatt_char(write_char, packet, response=False)
+        log.info("  0xA1 bind packet sent")
+        return True
+    except Exception as e:
+        log.info("  write failed: %s: %s", type(e).__name__, e)
+        return False
+
+
 async def subscribe_notifications(
     client: BleakClient,
 ) -> list[BleakGATTCharacteristic]:
@@ -545,6 +659,14 @@ async def subscribe_notifications(
     subscribed: list[BleakGATTCharacteristic] = []
 
     for characteristic in notify_chars:
+        # Handshake already subscribed to the primary vendor notify char.
+        if str(characteristic.uuid).lower() == UUID_F008_NOTIFY:
+            log.info(
+                "  skip (already subscribed in handshake): %s",
+                uuid_label(str(characteristic.uuid)),
+            )
+            subscribed.append(characteristic)
+            continue
         try:
             await client.start_notify(characteristic, notification_handler)
             log.info("  subscribed: %s", uuid_label(str(characteristic.uuid)))
@@ -608,6 +730,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "(often causes the watch to disconnect)",
     )
     parser.add_argument(
+        "--no-auth",
+        action="store_true",
+        help="Skip the Veepoo 0xA1 bind packet after connect",
+    )
+    parser.add_argument(
         "--scan-only",
         action="store_true",
         help="Only log advertisements; do not attempt to connect",
@@ -654,12 +781,18 @@ async def main(args: argparse.Namespace) -> int:
         log.info("")
         log.info("Connected and services ready.")
 
-        # 1) Structure dump (local, no ATT reads) so we see all UUIDs/properties
-        #    even if the link dies immediately after.
-        # 2) Subscribe to notifications as soon as possible.
-        # 3) Optional value reads last — those often trigger disconnect.
+        # Order matters: the watch drops unauthenticated links quickly.
+        # 1) Structure dump (local, no ATT reads)
+        # 2) Veepoo 0xA1 bind (subscribe f0080002 + write f0080003)
+        # 3) Subscribe remaining notify characteristics
+        # 4) Optional value reads last
         if not args.no_gatt_dump:
             await dump_gatt(client, read_values=False)
+
+        if not args.no_auth and client.is_connected:
+            await veepoo_handshake(client)
+        elif args.no_auth:
+            log.info("Skipping Veepoo 0xA1 bind (--no-auth)")
 
         subscribed = await subscribe_notifications(client)
 
