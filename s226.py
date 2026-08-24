@@ -553,13 +553,14 @@ def find_char_by_uuid(
     return None
 
 
+
 async def veepoo_handshake(client: BleakClient) -> bool:
     """
     Post-connect Veepoo bind derived from H-Band HCI capture.
 
-    H-Band order was CCCD then 0xA1; on Linux, start_notify (CCCD write)
-    has been observed to drop the link before 0xA1 can be sent. Send the
-    bind write first, then enable notifications.
+    0xA1 write to f0080003 succeeds on Linux. Enabling notifications via
+    Bleak start_notify has been dropping the link; try writing the CCCD
+    descriptor (0x2902) explicitly first, then start_notify if still up.
     """
     log.info("")
     log.info("=" * 70)
@@ -572,9 +573,6 @@ async def veepoo_handshake(client: BleakClient) -> bool:
     if write_char is None:
         log.info("  missing write characteristic %s", UUID_F008_WRITE)
         return False
-    if notify_char is None:
-        log.info("  missing notify characteristic %s", UUID_F008_NOTIFY)
-        # Still try the write.
 
     def notification_handler(sender: BleakGATTCharacteristic, data: bytearray) -> None:
         now = time.strftime("%H:%M:%S")
@@ -588,37 +586,70 @@ async def veepoo_handshake(client: BleakClient) -> bool:
         if data and data[0] == 0xA1:
             log.info("  ↑ 0xA1 response (auth/bind status); MAC may follow in payload")
 
-    # 1) Bind write first — must land before the watch tears down the link.
-    if not client.is_connected:
-        log.info("  disconnected before 0xA1 write")
-        return False
+    async def still_up(step: str) -> bool:
+        up = client.is_connected
+        log.info("  after %s: connected=%s", step, up)
+        return up
 
+    # 1) Bind write first.
     packet = build_a1_bind_packet()
     log.info("  write %s: %s", uuid_label(str(write_char.uuid)), hexstr(packet))
     write_ok = False
     try:
         await client.write_gatt_char(write_char, packet, response=False)
-        log.info("  0xA1 bind packet sent (write-without-response)")
+        log.info("  0xA1 sent (write-without-response)")
         write_ok = True
     except Exception as e:
         log.info("  write-without-response failed: %s: %s", type(e).__name__, e)
         if client.is_connected:
             try:
                 await client.write_gatt_char(write_char, packet, response=True)
-                log.info("  0xA1 bind packet sent (write-with-response)")
+                log.info("  0xA1 sent (write-with-response)")
                 write_ok = True
             except Exception as e2:
                 log.info("  write-with-response failed: %s: %s", type(e2).__name__, e2)
 
-    # 2) Enable notifications after bind (best-effort).
+    if not await still_up("0xA1 write"):
+        return write_ok
+
+    # 2) Enable CCCD by writing the 0x2902 descriptor (matches H-Band Write Request).
     notify_ok = False
-    if notify_char is not None and client.is_connected:
+    if notify_char is not None:
+        cccd = None
+        for desc in notify_char.descriptors:
+            if "2902" in str(desc.uuid).lower():
+                cccd = desc
+                break
+        if cccd is not None:
+            try:
+                await client.write_gatt_descriptor(cccd, bytes([0x01, 0x00]))
+                log.info("  CCCD 0x2902 written (01 00) on handle %s", cccd.handle)
+            except Exception as e:
+                log.info("  CCCD write failed: %s: %s", type(e).__name__, e)
+        else:
+            log.info("  no CCCD (0x2902) descriptor found on notify char")
+
+        if not await still_up("CCCD write"):
+            return write_ok
+
+        # 3) Register notification callback (CCCD may already be on).
         try:
             await client.start_notify(notify_char, notification_handler)
             log.info("  subscribed: %s", uuid_label(str(notify_char.uuid)))
             notify_ok = True
         except Exception as e:
             log.info("  start_notify failed: %s: %s", type(e).__name__, e)
+
+        await still_up("start_notify")
+
+    # 4) Probe command from capture while link is up (d8 00 status-style).
+    if client.is_connected:
+        probe = bytes([0xD8, 0x00])
+        try:
+            await client.write_gatt_char(write_char, probe, response=False)
+            log.info("  probe write: %s", hexstr(probe))
+        except Exception as e:
+            log.info("  probe write failed: %s: %s", type(e).__name__, e)
 
     log.info("  handshake done (write=%s, notify=%s)", write_ok, notify_ok)
     return write_ok
