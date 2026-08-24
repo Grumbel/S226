@@ -555,12 +555,11 @@ def find_char_by_uuid(
 
 async def veepoo_handshake(client: BleakClient) -> bool:
     """
-    Reproduce the H-Band post-connect sequence from HCI capture:
+    Post-connect Veepoo bind derived from H-Band HCI capture.
 
-      1. Subscribe to f0080002 notifications (CCCD 0x000e = 01 00)
-      2. Write_Cmd to f0080003 with the 20-byte 0xA1 bind packet
-
-    Returns True if the write was issued successfully.
+    H-Band order was CCCD then 0xA1; on Linux, start_notify (CCCD write)
+    has been observed to drop the link before 0xA1 can be sent. Send the
+    bind write first, then enable notifications.
     """
     log.info("")
     log.info("=" * 70)
@@ -570,12 +569,12 @@ async def veepoo_handshake(client: BleakClient) -> bool:
     notify_char = find_char_by_uuid(client, UUID_F008_NOTIFY)
     write_char = find_char_by_uuid(client, UUID_F008_WRITE)
 
-    if notify_char is None:
-        log.info("  missing notify characteristic %s", UUID_F008_NOTIFY)
-        return False
     if write_char is None:
         log.info("  missing write characteristic %s", UUID_F008_WRITE)
         return False
+    if notify_char is None:
+        log.info("  missing notify characteristic %s", UUID_F008_NOTIFY)
+        # Still try the write.
 
     def notification_handler(sender: BleakGATTCharacteristic, data: bytearray) -> None:
         now = time.strftime("%H:%M:%S")
@@ -589,29 +588,40 @@ async def veepoo_handshake(client: BleakClient) -> bool:
         if data and data[0] == 0xA1:
             log.info("  ↑ 0xA1 response (auth/bind status); MAC may follow in payload")
 
-    notify_ok = False
-    try:
-        await client.start_notify(notify_char, notification_handler)
-        log.info("  subscribed: %s", uuid_label(str(notify_char.uuid)))
-        notify_ok = True
-    except Exception as e:
-        log.info("  start_notify failed: %s: %s", type(e).__name__, e)
-        # Still try the bind write; some firmwares accept 0xA1 without CCCD.
-
+    # 1) Bind write first — must land before the watch tears down the link.
     if not client.is_connected:
         log.info("  disconnected before 0xA1 write")
         return False
 
     packet = build_a1_bind_packet()
     log.info("  write %s: %s", uuid_label(str(write_char.uuid)), hexstr(packet))
+    write_ok = False
     try:
-        # H-Band uses Write Command (no response), not Write Request.
         await client.write_gatt_char(write_char, packet, response=False)
-        log.info("  0xA1 bind packet sent (notify=%s)", notify_ok)
-        return True
+        log.info("  0xA1 bind packet sent (write-without-response)")
+        write_ok = True
     except Exception as e:
-        log.info("  write failed: %s: %s", type(e).__name__, e)
-        return False
+        log.info("  write-without-response failed: %s: %s", type(e).__name__, e)
+        if client.is_connected:
+            try:
+                await client.write_gatt_char(write_char, packet, response=True)
+                log.info("  0xA1 bind packet sent (write-with-response)")
+                write_ok = True
+            except Exception as e2:
+                log.info("  write-with-response failed: %s: %s", type(e2).__name__, e2)
+
+    # 2) Enable notifications after bind (best-effort).
+    notify_ok = False
+    if notify_char is not None and client.is_connected:
+        try:
+            await client.start_notify(notify_char, notification_handler)
+            log.info("  subscribed: %s", uuid_label(str(notify_char.uuid)))
+            notify_ok = True
+        except Exception as e:
+            log.info("  start_notify failed: %s: %s", type(e).__name__, e)
+
+    log.info("  handshake done (write=%s, notify=%s)", write_ok, notify_ok)
+    return write_ok
 
 
 async def subscribe_notifications(
