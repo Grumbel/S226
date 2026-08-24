@@ -15,12 +15,22 @@
       forAllSystems = f:
         nixpkgs.lib.genAttrs systems (system:
           f (import nixpkgs { inherit system; }));
+
+      versionBase =
+        nixpkgs.lib.strings.removeSuffix "\n" (builtins.readFile ./VERSION);
+      gitRev = "${self.shortRev or self.dirtyShortRev or "dirty"}";
+      isDev = nixpkgs.lib.strings.hasInfix "-dev" versionBase;
+      version =
+        if isDev then
+          "${versionBase}.${toString (self.revCount or 0)}+g${gitRev}"
+        else
+          versionBase;
     in
     {
       packages = forAllSystems (pkgs: {
         default = pkgs.python3Packages.buildPythonApplication {
           pname = "s226";
-          version = "0.1.0";
+          inherit version;
 
           src = ./.;
 
@@ -29,6 +39,13 @@
           propagatedBuildInputs = with pkgs.python3Packages; [
             bleak
           ];
+
+          # Bake version into the installed script so --version and logs work
+          # without needing a git tree at runtime.
+          postPatch = ''
+            substituteInPlace s226.py \
+              --replace-fail '__S226_VERSION__' '${version}'
+          '';
 
           installPhase = ''
             mkdir -p $out/bin
@@ -41,7 +58,7 @@
       apps = forAllSystems (pkgs: {
         default = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.default}/bin/s226";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/s226";
         };
       });
 
