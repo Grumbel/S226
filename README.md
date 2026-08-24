@@ -455,7 +455,7 @@ Observed failure modes:
 
 * Device only appears at very short range (e.g. ~10 cm from the USB dongle). Treat this as a weak antenna / RF path issue on the adapter or watch; keep the watch against the dongle while testing.
 * `TimeoutError` / connect timeout after a successful find — the watch is only connectable for a brief moment after each advertisement. The tool now **keeps scanning while connecting** so BlueZ does not drop the random-address device from its cache, and retries both the live `BLEDevice` object and a plain address-string connect.
-* `failed to discover services, device disconnected` — GATT link came up but the watch dropped it before (or during) service discovery.
+* `failed to discover services, device disconnected` — GATT link comes up, then the watch drops it during service discovery. This is the dominant failure mode so far and matches Veepoo behaviour when the app-level password packet is not sent immediately. Retries now wait for a **fresh advertisement** each time instead of hammering a stale BlueZ device path.
 * `Service Discovery has not been performed yet` — fixed by calling `get_services()` after `connect()`.
 
 Useful parallel diagnostics while connecting:

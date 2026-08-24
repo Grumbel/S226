@@ -222,6 +222,14 @@ async def connect_address(
     return None
 
 
+async def _safe_scanner_stop(scanner: BleakScanner) -> None:
+    """Stop scanner without blowing up if BlueZ already tore it down."""
+    try:
+        await scanner.stop()
+    except Exception as e:
+        log.info("scanner stop: %s: %s", type(e).__name__, e)
+
+
 async def find_and_connect(
     scan_timeout: float,
     connect_timeout: float,
@@ -230,25 +238,25 @@ async def find_and_connect(
     """
     Scan and connect immediately when the S226 appears.
 
-    The watch advertises only briefly (especially after the first
-    power-on window). We therefore:
-      1. Connect from the scanner callback using the live BLEDevice.
-      2. Retry the connect a few times if it times out, while the
-         device may still be in a connectable state.
+    The watch often accepts the ACL link and then disconnects during
+    GATT service discovery (typical of Veepoo devices that expect an
+    immediate app-level password). Between retries we wait for a *fresh*
+    advertisement so BlueZ has a live random-address device again.
     """
     found = asyncio.Event()
     result: dict = {}
+    lock = asyncio.Lock()
 
     def detection_callback(
         device: BLEDevice, advertisement_data: AdvertisementData
     ) -> None:
         if not is_s226(device, advertisement_data):
             return
-        if found.is_set():
-            return
-        _print_advertisement(device, advertisement_data)
+        # Always refresh the latest BLEDevice; do not ignore later ads.
         result["device"] = device
-        found.set()
+        if not found.is_set():
+            _print_advertisement(device, advertisement_data)
+            found.set()
 
     scanner = BleakScanner(detection_callback=detection_callback)
     log.info(
@@ -260,23 +268,35 @@ async def find_and_connect(
     await scanner.start()
 
     try:
-        try:
-            await asyncio.wait_for(found.wait(), timeout=scan_timeout)
-        except asyncio.TimeoutError:
-            log.info("S226 not found.")
-            return None
-
-        device = result["device"]
-
-        # IMPORTANT:
-        # Keep the scanner running while connecting. On BlueZ, stopping the
-        # scan can drop random-address devices from the kernel cache, which
-        # then causes LE Create Connection to time out even though we just
-        # saw the advertisement. The watch is also only connectable for a
-        # short window after each advertisement.
-
+        deadline = asyncio.get_event_loop().time() + scan_timeout
         last_error: Optional[BaseException] = None
+
         for attempt in range(1, connect_retries + 1):
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                if last_error is None:
+                    log.info("S226 not found.")
+                    return None
+                break
+
+            # Wait for a (fresh) advertisement before each attempt.
+            found.clear()
+            log.info(
+                "Waiting for advertisement (attempt %d/%d, %.0fs left)...",
+                attempt,
+                connect_retries,
+                remaining,
+            )
+            try:
+                await asyncio.wait_for(found.wait(), timeout=remaining)
+            except asyncio.TimeoutError:
+                if last_error is None:
+                    log.info("S226 not found.")
+                    return None
+                log.info("No further advertisements before scan timeout.")
+                break
+
+            device = result["device"]
             log.info("")
             log.info(
                 "Connect attempt %d/%d to %s (timeout=%ss)...",
@@ -286,67 +306,47 @@ async def find_and_connect(
                 connect_timeout,
             )
 
-            # Prefer the live BLEDevice from the advertisement. Fall back to
-            # the address string if that path fails (some BlueZ/Bleak combos
-            # behave differently).
-            targets: list[BLEDevice | str] = [device, device.address]
-            attempt_error: Optional[BaseException] = None
+            client = BleakClient(device, timeout=connect_timeout)
+            try:
+                await client.connect()
+                if not client.is_connected:
+                    raise RuntimeError(
+                        "connect() returned but is_connected is False"
+                    )
 
-            for target in targets:
-                label = (
-                    f"BLEDevice {device.address}"
-                    if not isinstance(target, str)
-                    else f"address {target}"
+                # Force service discovery; avoid the
+                # "Service Discovery has not been performed yet" race.
+                services = await client.get_services()
+                n_services = len(list(services))
+                n_chars = sum(len(s.characteristics) for s in services)
+                log.info(
+                    "Connected: %s  (services=%d, characteristics=%d)",
+                    client.is_connected,
+                    n_services,
+                    n_chars,
                 )
-                client = BleakClient(target, timeout=connect_timeout)
+                if n_services == 0:
+                    raise RuntimeError(
+                        "connected but zero GATT services discovered"
+                    )
+                return client
+            except Exception as e:
+                last_error = e
+                log.info("  attempt failed: %s: %s", type(e).__name__, e)
                 try:
-                    log.info("  trying via %s ...", label)
-                    await client.connect()
-                    if not client.is_connected:
-                        raise RuntimeError(
-                            "connect() returned but is_connected is False"
-                        )
+                    if client.is_connected:
+                        await client.disconnect()
+                except Exception:
+                    pass
+                # Small gap so the peripheral can re-enter advertising.
+                await asyncio.sleep(0.5)
 
-                    # Force service discovery; avoid the
-                    # "Service Discovery has not been performed yet" race.
-                    services = await client.get_services()
-                    n_services = len(list(services))
-                    n_chars = sum(len(s.characteristics) for s in services)
-                    log.info(
-                        "Connected via %s  (services=%d, characteristics=%d)",
-                        label,
-                        n_services,
-                        n_chars,
-                    )
-                    if n_services == 0:
-                        raise RuntimeError(
-                            "connected but zero GATT services discovered"
-                        )
-                    return client
-                except Exception as e:
-                    attempt_error = e
-                    log.info(
-                        "  %s failed: %s: %s",
-                        label,
-                        type(e).__name__,
-                        e,
-                    )
-                    try:
-                        if client.is_connected:
-                            await client.disconnect()
-                    except Exception:
-                        pass
-
-            last_error = attempt_error
-            if attempt < connect_retries:
-                # Watch may re-advertise; stay scanning so BlueZ keeps it.
-                await asyncio.sleep(0.4)
-
-        assert last_error is not None
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        return None
 
     finally:
-        await scanner.stop()
+        await _safe_scanner_stop(scanner)
 
 
 async def dump_descriptor(client: BleakClient, descriptor) -> None:
