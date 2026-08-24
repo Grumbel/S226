@@ -401,14 +401,40 @@ It is possible that H-Band performs authentication **inside the vendor protocol*
 2. Detect the device from its advertisement.
 3. Recognize it by name or `0xf8f8` manufacturer data.
 4. Immediately connect using the `BLEDevice` returned by the scanner.
-5. Enumerate all GATT services.
-6. Enumerate all characteristics.
-7. Enumerate descriptors.
-8. Read every readable characteristic.
-9. Subscribe to every notify/indicate characteristic.
-10. Listen for packets for a configurable period.
+5. Enumerate all GATT services / characteristics / descriptors.
+6. Read every readable characteristic.
+7. Subscribe to every notify/indicate characteristic.
+8. Listen for packets for a configurable period.
 
 The immediate-connect behavior is important because the watch appears to sleep shortly after advertising.
+
+### Usage
+
+```bash
+# Default: scan 30s, connect 10s, listen 30s
+nix run .#
+
+# Longer listen window while interacting with the watch
+nix run .# -- --listen 120
+
+# Also write a full transcript
+nix run .# -- --log-file s226-$(date +%Y%m%d-%H%M%S).log --listen 60
+
+# Skip the (verbose) GATT dump when only notification traffic is needed
+nix run .# -- --no-gatt-dump --listen 90
+```
+
+Available flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--scan-timeout SECONDS` | 30 | How long to wait for an advertisement |
+| `--connect-timeout SECONDS` | 10 | Connection establishment timeout |
+| `--listen SECONDS` | 30 | How long to stay connected and print notifications |
+| `--log-file PATH` | (none) | Mirror all console output to a file |
+| `--no-gatt-dump` | false | Skip reading/printing the full GATT database |
+
+Known standard and vendor UUIDs are annotated with human-readable names in the output to make logs easier to scan.
 
 ## Current Reverse Engineering Targets
 
