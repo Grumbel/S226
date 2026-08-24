@@ -20,6 +20,12 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
+# Replaced at install time by the Nix flake (see postPatch). In a raw
+# checkout this remains the placeholder so --version still works.
+__version__ = "__S226_VERSION__"
+if __version__ == "__S226_VERSION__":
+    __version__ = "0.2.0-dev+unknown"
+
 
 WATCH_NAME = "S226"
 MANUFACTURER_ID = 0xF8F8
@@ -176,6 +182,34 @@ async def scan_only(scan_timeout: float) -> int:
     return 0 if count else 1
 
 
+async def ensure_services(client: BleakClient, timeout: float = 10.0):
+    """
+    Return the GATT service collection once discovery has finished.
+
+    Bleak 3.x removed get_services(); connect() performs discovery and
+    results are exposed via the client.services property. Poll briefly
+    if the property is not ready yet.
+    """
+    deadline = asyncio.get_event_loop().time() + timeout
+    last_error: Optional[BaseException] = None
+    while asyncio.get_event_loop().time() < deadline:
+        try:
+            services = client.services
+            # Force evaluation; may raise if discovery is incomplete.
+            items = list(services)
+            if items:
+                return services
+        except Exception as e:
+            last_error = e
+        if not client.is_connected:
+            raise RuntimeError("disconnected while waiting for services") from last_error
+        await asyncio.sleep(0.1)
+    if last_error is not None:
+        raise RuntimeError(
+            f"services not ready within {timeout}s"
+        ) from last_error
+    raise RuntimeError(f"services not ready within {timeout}s (empty)")
+
 async def connect_address(
     address: str,
     connect_timeout: float,
@@ -195,7 +229,7 @@ async def connect_address(
         client = BleakClient(address, timeout=connect_timeout)
         try:
             await client.connect()
-            services = await client.get_services()
+            services = await ensure_services(client)
             n_services = len(list(services))
             n_chars = sum(len(s.characteristics) for s in services)
             log.info(
@@ -316,7 +350,7 @@ async def find_and_connect(
 
                 # Force service discovery; avoid the
                 # "Service Discovery has not been performed yet" race.
-                services = await client.get_services()
+                services = await ensure_services(client)
                 n_services = len(list(services))
                 n_chars = sum(len(s.characteristics) for s in services)
                 log.info(
@@ -391,18 +425,6 @@ async def dump_characteristic(
             log.info("      READ FAILED: %s", e)
 
 
-async def ensure_services(client: BleakClient):
-    """Return the GATT service collection, refreshing if needed."""
-    try:
-        services = client.services
-        # Accessing .services can raise if discovery never completed.
-        _ = list(services)
-        if list(services):
-            return services
-    except Exception:
-        pass
-    return await client.get_services()
-
 
 async def dump_gatt(client: BleakClient) -> None:
     log.info("")
@@ -467,6 +489,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
         "--scan-timeout",
         type=float,
         default=30.0,
@@ -519,6 +546,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 async def main(args: argparse.Namespace) -> int:
     setup_logging(args.log_file)
 
+    log.info("s226 %s", __version__)
     if args.log_file:
         log.info("Logging to %s", args.log_file)
         log.info("Started at %s", datetime.now().isoformat(timespec="seconds"))
