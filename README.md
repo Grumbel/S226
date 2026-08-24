@@ -450,6 +450,14 @@ The S226 advertises only for a short window. After the first power-on it is ofte
 
 Connection timeouts are common when the advertisement ends before BlueZ finishes the connection. Use a long `--scan-timeout`, a generous `--connect-timeout`, and several `--connect-retries`. Prefer connecting immediately on advertisement (what this tool does) rather than a separate scan-then-connect.
 
+Observed failure modes:
+
+* `TimeoutError` / connect timeout — advertisement window already closed.
+* `failed to discover services, device disconnected` — GATT link came up but the watch dropped it before (or during) service discovery. Retries sometimes help; catching the longer post-power-on window helps more.
+* `Service Discovery has not been performed yet` — race fixed by explicitly calling `get_services()` after `connect()` and only proceeding when services are populated.
+
+The scanner is stopped before the connect attempts begin so BlueZ is not still scanning while resolving the GATT database.
+
 ### Veepoo / H-Band protocol
 
 The companion app is **H-Band** (Veepoo Technology). After a successful BLE GATT connection the official SDK **must** perform a password verification step (`confirmDevicePwd`) with the default password `"0000"`. Only after that does the device expose full functionality and stay usefully connected.
