@@ -127,16 +127,68 @@ def setup_logging(log_file: Optional[str]) -> None:
 log = logging.getLogger("s226")
 
 
+def _print_advertisement(device: BLEDevice, advertisement_data: AdvertisementData) -> None:
+    name = device.name or advertisement_data.local_name
+    log.info("")
+    log.info("=" * 70)
+    log.info("S226 FOUND")
+    log.info("=" * 70)
+    log.info("Name:         %s", name)
+    log.info("Address:      %s", device.address)
+    log.info("RSSI:         %s", advertisement_data.rssi)
+    log.info("Service UUIDs: %s", advertisement_data.service_uuids)
+
+    if advertisement_data.manufacturer_data:
+        log.info("Manufacturer data:")
+        for manufacturer_id, data in advertisement_data.manufacturer_data.items():
+            log.info("  %#06x: %s", manufacturer_id, hexstr(data))
+
+    if advertisement_data.service_data:
+        log.info("Service data:")
+        for uuid, data in advertisement_data.service_data.items():
+            log.info("  %s: %s", uuid, hexstr(data))
+
+    log.info("=" * 70)
+
+
+async def scan_only(scan_timeout: float) -> int:
+    """Continuously log every S226 advertisement until timeout."""
+    count = 0
+
+    def detection_callback(
+        device: BLEDevice, advertisement_data: AdvertisementData
+    ) -> None:
+        nonlocal count
+        if not is_s226(device, advertisement_data):
+            return
+        count += 1
+        _print_advertisement(device, advertisement_data)
+        log.info("(advertisement #%d)", count)
+
+    scanner = BleakScanner(detection_callback=detection_callback)
+    log.info("Scan-only mode: logging advertisements for %ss...", scan_timeout)
+    await scanner.start()
+    try:
+        await asyncio.sleep(scan_timeout)
+    finally:
+        await scanner.stop()
+    log.info("Seen %d S226 advertisement(s).", count)
+    return 0 if count else 1
+
+
 async def find_and_connect(
     scan_timeout: float,
     connect_timeout: float,
+    connect_retries: int,
 ) -> Optional[BleakClient]:
     """
     Scan and connect immediately when the S226 appears.
 
-    This is deliberately done from the scanner callback. The watch
-    appears to advertise only briefly, so doing a separate
-    discover() followed by connect() introduces a race.
+    The watch advertises only briefly (especially after the first
+    power-on window). We therefore:
+      1. Connect from the scanner callback using the live BLEDevice.
+      2. Retry the connect a few times if it times out, while the
+         device may still be in a connectable state.
     """
     found = asyncio.Event()
     result: dict = {}
@@ -146,40 +198,19 @@ async def find_and_connect(
     ) -> None:
         if not is_s226(device, advertisement_data):
             return
-
         if found.is_set():
             return
-
-        name = device.name or advertisement_data.local_name
-
-        log.info("")
-        log.info("=" * 70)
-        log.info("S226 FOUND")
-        log.info("=" * 70)
-        log.info("Name:         %s", name)
-        log.info("Address:      %s", device.address)
-        log.info("RSSI:         %s", advertisement_data.rssi)
-        log.info("Service UUIDs: %s", advertisement_data.service_uuids)
-
-        if advertisement_data.manufacturer_data:
-            log.info("Manufacturer data:")
-            for manufacturer_id, data in advertisement_data.manufacturer_data.items():
-                log.info("  %#06x: %s", manufacturer_id, hexstr(data))
-
-        if advertisement_data.service_data:
-            log.info("Service data:")
-            for uuid, data in advertisement_data.service_data.items():
-                log.info("  %s: %s", uuid, hexstr(data))
-
-        log.info("=" * 70)
-
+        _print_advertisement(device, advertisement_data)
         result["device"] = device
         found.set()
 
     scanner = BleakScanner(detection_callback=detection_callback)
-
-    log.info("Scanning for S226 (timeout=%ss)...", scan_timeout)
-
+    log.info(
+        "Scanning for S226 (timeout=%ss, connect_timeout=%ss, retries=%d)...",
+        scan_timeout,
+        connect_timeout,
+        connect_retries,
+    )
     await scanner.start()
 
     try:
@@ -191,31 +222,37 @@ async def find_and_connect(
 
         device = result["device"]
 
-        # IMPORTANT:
-        #
-        # We use the exact BLEDevice object obtained from the
-        # advertisement instead of doing another scan or constructing
-        # a new address.
-        #
-        # This matters because the S226 uses a random BLE address and
-        # appears to stop advertising shortly after being discovered.
+        # IMPORTANT: use the BLEDevice from the advertisement.
+        # The S226 uses a random address and often stops advertising
+        # shortly after discovery; a second scan would miss it.
 
-        log.info("")
-        log.info("Connecting immediately to %s...", device.address)
-
-        client = BleakClient(device, timeout=connect_timeout)
-
-        try:
-            await client.connect()
-        except Exception:
+        last_error: Optional[BaseException] = None
+        for attempt in range(1, connect_retries + 1):
+            log.info("")
+            log.info(
+                "Connect attempt %d/%d to %s (timeout=%ss)...",
+                attempt,
+                connect_retries,
+                device.address,
+                connect_timeout,
+            )
+            client = BleakClient(device, timeout=connect_timeout)
             try:
-                await client.disconnect()
-            except Exception:
-                pass
-            raise
+                await client.connect()
+                log.info("Connected: %s", client.is_connected)
+                return client
+            except Exception as e:
+                last_error = e
+                log.info("  attempt failed: %s: %s", type(e).__name__, e)
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
+                if attempt < connect_retries:
+                    await asyncio.sleep(0.3)
 
-        log.info("Connected: %s", client.is_connected)
-        return client
+        assert last_error is not None
+        raise last_error
 
     finally:
         await scanner.stop()
@@ -331,8 +368,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--connect-timeout",
         type=float,
-        default=10.0,
-        help="Seconds to wait for connection",
+        default=25.0,
+        help="Seconds to wait for each connection attempt",
+    )
+    parser.add_argument(
+        "--connect-retries",
+        type=int,
+        default=3,
+        help="How many times to retry connect after a timeout",
     )
     parser.add_argument(
         "--listen",
@@ -352,6 +395,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip full GATT dump (only subscribe and listen)",
     )
+    parser.add_argument(
+        "--scan-only",
+        action="store_true",
+        help="Only log advertisements; do not attempt to connect",
+    )
     return parser.parse_args(argv)
 
 
@@ -362,12 +410,16 @@ async def main(args: argparse.Namespace) -> int:
         log.info("Logging to %s", args.log_file)
         log.info("Started at %s", datetime.now().isoformat(timespec="seconds"))
 
+    if args.scan_only:
+        return await scan_only(args.scan_timeout)
+
     client: Optional[BleakClient] = None
 
     try:
         client = await find_and_connect(
             scan_timeout=args.scan_timeout,
             connect_timeout=args.connect_timeout,
+            connect_retries=args.connect_retries,
         )
 
         if client is None:
