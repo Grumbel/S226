@@ -40,11 +40,10 @@
             bleak
           ];
 
-          # Bake version into the installed script so --version and logs work
-          # without needing a git tree at runtime.
+          # Bake the full version string into s226.py at build time.
+          # --subst-var-by replaces @S226_VERSION@ with the value.
           postPatch = ''
-            substituteInPlace s226.py \
-              --replace-fail '@S226_VERSION@' '${version}'
+            substituteInPlace s226.py --subst-var-by S226_VERSION ${pkgs.lib.escapeShellArg version}
           '';
 
           installPhase = ''

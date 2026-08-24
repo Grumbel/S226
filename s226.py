@@ -20,30 +20,12 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-# Replaced at install time by the Nix flake (see postPatch).
-# Nix postPatch replaces the token on the next line.
-S226_VERSION_BAKED = "@S226_VERSION@"
-
-
-def _resolve_version() -> str:
-    if S226_VERSION_BAKED != "@S226_VERSION@":
-        return S226_VERSION_BAKED
-    # Development / non-Nix: read top-level VERSION next to this file or cwd.
-    candidates = [
-        Path(__file__).resolve().parent / "VERSION",
-        Path.cwd() / "VERSION",
-    ]
-    for candidate in candidates:
-        try:
-            base = candidate.read_text(encoding="utf-8").strip()
-            if base:
-                return f"{base}+unknown"
-        except OSError:
-            pass
-    return "0.2.0-dev+unknown"
-
-
-__version__ = _resolve_version()
+# Baked in by the Nix flake via substituteInPlace --subst-var-by.
+# In a plain source checkout the token is left as-is and we fall back
+# to the VERSION file contents without git metadata.
+__version__ = "@S226_VERSION@"
+if __version__ == "@S226_VERSION@":
+    __version__ = "0.2.0-dev"
 
 
 WATCH_NAME = "S226"
