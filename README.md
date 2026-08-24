@@ -485,6 +485,11 @@ The binary command format for that password exchange lives inside the closed-sou
 
 Capturing phone-side HCI logs while H-Band connects is the highest-value next experiment.
 
+**Current status (observed repeatedly):** the ACL link comes up, then the
+watch disconnects during GATT service discovery. This is systematic, not a
+range issue. Further connect-retry tuning is unlikely to help until the
+Veepoo password write is reproduced from an HCI capture.
+
 ## Current Reverse Engineering Targets
 
 The next useful things to determine are:

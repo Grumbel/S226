@@ -20,11 +20,30 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-# Replaced at install time by the Nix flake (see postPatch). In a raw
-# checkout this remains the placeholder so --version still works.
-__version__ = "__S226_VERSION__"
-if __version__ == "__S226_VERSION__":
-    __version__ = "0.2.0-dev+unknown"
+# Replaced at install time by the Nix flake (see postPatch).
+# Nix postPatch replaces the token on the next line.
+S226_VERSION_BAKED = "@S226_VERSION@"
+
+
+def _resolve_version() -> str:
+    if S226_VERSION_BAKED != "@S226_VERSION@":
+        return S226_VERSION_BAKED
+    # Development / non-Nix: read top-level VERSION next to this file or cwd.
+    candidates = [
+        Path(__file__).resolve().parent / "VERSION",
+        Path.cwd() / "VERSION",
+    ]
+    for candidate in candidates:
+        try:
+            base = candidate.read_text(encoding="utf-8").strip()
+            if base:
+                return f"{base}+unknown"
+        except OSError:
+            pass
+    return "0.2.0-dev+unknown"
+
+
+__version__ = _resolve_version()
 
 
 WATCH_NAME = "S226"
@@ -226,7 +245,18 @@ async def connect_address(
             address,
             connect_timeout,
         )
-        client = BleakClient(address, timeout=connect_timeout)
+        client = BleakClient(
+            address,
+            timeout=connect_timeout,
+            services=[
+                "00001800-0000-1000-8000-00805f9b34fb",
+                "00001801-0000-1000-8000-00805f9b34fb",
+                "f0080001-0451-4000-b000-000000000000",
+                "f0020001-0451-4000-b000-000000000000",
+                "0000fee7-0000-1000-8000-00805f9b34fb",
+                "00001812-0000-1000-8000-00805f9b34fb",
+            ],
+        )
         try:
             await client.connect()
             services = await ensure_services(client)
@@ -340,7 +370,20 @@ async def find_and_connect(
                 connect_timeout,
             )
 
-            client = BleakClient(device, timeout=connect_timeout)
+            # Limit discovery to services we care about so BlueZ finishes
+            # faster; the watch often drops the link mid-discovery.
+            client = BleakClient(
+                device,
+                timeout=connect_timeout,
+                services=[
+                    "00001800-0000-1000-8000-00805f9b34fb",
+                    "00001801-0000-1000-8000-00805f9b34fb",
+                    "f0080001-0451-4000-b000-000000000000",
+                    "f0020001-0451-4000-b000-000000000000",
+                    "0000fee7-0000-1000-8000-00805f9b34fb",
+                    "00001812-0000-1000-8000-00805f9b34fb",
+                ],
+            )
             try:
                 await client.connect()
                 if not client.is_connected:

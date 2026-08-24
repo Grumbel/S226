@@ -44,7 +44,7 @@
           # without needing a git tree at runtime.
           postPatch = ''
             substituteInPlace s226.py \
-              --replace-fail '__S226_VERSION__' '${version}'
+              --replace-fail '@S226_VERSION@' '${version}'
           '';
 
           installPhase = ''
