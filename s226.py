@@ -554,13 +554,20 @@ def find_char_by_uuid(
 
 
 
-async def veepoo_handshake(client: BleakClient) -> bool:
-    """
-    Post-connect Veepoo bind derived from H-Band HCI capture.
 
-    0xA1 write to f0080003 succeeds on Linux. Enabling notifications via
-    Bleak start_notify has been dropping the link; try writing the CCCD
-    descriptor (0x2902) explicitly first, then start_notify if still up.
+async def veepoo_handshake(client: BleakClient, *, enable_notify: bool = False) -> bool:
+    """
+    Post-connect Veepoo bind from H-Band HCI capture.
+
+    HCI sequence (no SMP, no MTU exchange):
+      Write_Req  CCCD 0x000e = 01 00
+      Write_Cmd  handle 0x0011  20-byte 0xA1 packet
+      → notifications on 0x000d
+
+    On Linux, 0xA1 write-without-response succeeds and the link stays up.
+    start_notify() gets ATT Unlikely Error (0x0e); BlueZ then ends the
+    ACL with reason 0x16 (local host). So notify is opt-in via
+    enable_notify; default is bind-only so we can dump and probe.
     """
     log.info("")
     log.info("=" * 70)
@@ -586,12 +593,6 @@ async def veepoo_handshake(client: BleakClient) -> bool:
         if data and data[0] == 0xA1:
             log.info("  ↑ 0xA1 response (auth/bind status); MAC may follow in payload")
 
-    async def still_up(step: str) -> bool:
-        up = client.is_connected
-        log.info("  after %s: connected=%s", step, up)
-        return up
-
-    # 1) Bind write first.
     packet = build_a1_bind_packet()
     log.info("  write %s: %s", uuid_label(str(write_char.uuid)), hexstr(packet))
     write_ok = False
@@ -609,47 +610,33 @@ async def veepoo_handshake(client: BleakClient) -> bool:
             except Exception as e2:
                 log.info("  write-with-response failed: %s: %s", type(e2).__name__, e2)
 
-    if not await still_up("0xA1 write"):
+    log.info("  after 0xA1 write: connected=%s", client.is_connected)
+    if not client.is_connected:
         return write_ok
 
-    # 2) Enable CCCD by writing the 0x2902 descriptor (matches H-Band Write Request).
     notify_ok = False
-    if notify_char is not None:
-        cccd = None
-        for desc in notify_char.descriptors:
-            if "2902" in str(desc.uuid).lower():
-                cccd = desc
-                break
-        if cccd is not None:
-            try:
-                await client.write_gatt_descriptor(cccd, bytes([0x01, 0x00]))
-                log.info("  CCCD 0x2902 written (01 00) on handle %s", cccd.handle)
-            except Exception as e:
-                log.info("  CCCD write failed: %s: %s", type(e).__name__, e)
-        else:
-            log.info("  no CCCD (0x2902) descriptor found on notify char")
-
-        if not await still_up("CCCD write"):
-            return write_ok
-
-        # 3) Register notification callback (CCCD may already be on).
+    if enable_notify and notify_char is not None:
         try:
             await client.start_notify(notify_char, notification_handler)
             log.info("  subscribed: %s", uuid_label(str(notify_char.uuid)))
             notify_ok = True
         except Exception as e:
             log.info("  start_notify failed: %s: %s", type(e).__name__, e)
+        log.info("  after start_notify: connected=%s", client.is_connected)
+    elif not enable_notify:
+        log.info(
+            "  skipping start_notify (default; use --enable-notify to try CCCD)"
+        )
 
-        await still_up("start_notify")
-
-    # 4) Probe command from capture while link is up (d8 00 status-style).
+    # Probe while link is up (responses only visible if notify works).
     if client.is_connected:
-        probe = bytes([0xD8, 0x00])
-        try:
-            await client.write_gatt_char(write_char, probe, response=False)
-            log.info("  probe write: %s", hexstr(probe))
-        except Exception as e:
-            log.info("  probe write failed: %s: %s", type(e).__name__, e)
+        for probe in (bytes([0xD8, 0x00]), bytes([0xA0, 0x00])):
+            try:
+                await client.write_gatt_char(write_char, probe, response=False)
+                log.info("  probe write: %s", hexstr(probe))
+            except Exception as e:
+                log.info("  probe %s failed: %s: %s", hexstr(probe), type(e).__name__, e)
+                break
 
     log.info("  handshake done (write=%s, notify=%s)", write_ok, notify_ok)
     return write_ok
@@ -765,6 +752,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Skip the Veepoo 0xA1 bind packet after connect",
     )
     parser.add_argument(
+        "--enable-notify",
+        action="store_true",
+        help="After 0xA1, call start_notify on f0080002 (currently drops the link)",
+    )
+    parser.add_argument(
         "--adapter",
         default=None,
         metavar="HCI",
@@ -828,7 +820,7 @@ async def main(args: argparse.Namespace) -> int:
         # 3) Subscribe remaining notify characteristics
         # 4) Optional value reads last
         if not args.no_auth and client.is_connected:
-            await veepoo_handshake(client)
+            await veepoo_handshake(client, enable_notify=args.enable_notify)
         elif args.no_auth:
             log.info("Skipping Veepoo 0xA1 bind (--no-auth)")
 

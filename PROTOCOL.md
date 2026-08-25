@@ -118,6 +118,29 @@ advertisements continue. Before testing with `s226`:
 Successful earlier Linux sessions used RSSI roughly −42…−56 with the phone
 not connected.
 
+
+## HCI recheck (btsnoop_hci.log.last)
+
+Re-parsed 2026-08-25:
+
+* **No SMP / pairing** and **no ATT MTU exchange** in the session.
+* Exactly one `Write Request`: CCCD handle **0x000e** = `01 00` (~630 ms after first ATT).
+* Then `Write Command` to **0x0011** with the 20-byte `0xA1` packet (~853 ms).
+* Notifications on **0x000d** within ~30 ms (`0xA7`, `0xAD`, `0xB8`, `0xA1` status with MAC).
+* Later probes: `d8 00`, `f4 02…`, `a0 00`, `a3 …`, etc., all Write Command + notify echo.
+* HCI disconnect reason on the failed Linux path was **0x16 (Connection Terminated by Local Host)** — BlueZ/Bleak ends the ACL after the ATT Unlikely Error on CCCD, not a spontaneous watch drop after 0xA1.
+
+### Linux behaviour vs phone
+
+| Step | Phone (H-Band) | Linux (Bleak) |
+|------|----------------|---------------|
+| Service discovery | OK | OK |
+| CCCD `01 00` | Write Request OK | `start_notify` → Unlikely Error (0x0e) |
+| 0xA1 Write Command | OK after CCCD | OK **before** notify; link stays up |
+| Notifications | Many | None (CCCD never enables) |
+
+Default tool path: **0xA1 only** (plus optional write probes). Use `--enable-notify` to retry CCCD.
+
 ## Implementation status (`s226`)
 
 After a successful connect the tool:
