@@ -275,12 +275,17 @@ async def run(args: argparse.Namespace) -> int:
             return 1
 
         # Optional: enable notify first (phone order) or after A1
-        async def on_notify(characteristic, value: bytes) -> None:
+        def on_notify(value: bytes) -> None:
+            # Bumble passes only the value (decoded bytes).
             now = time.strftime("%H:%M:%S")
+            if not isinstance(value, (bytes, bytearray)):
+                try:
+                    value = bytes(value)
+                except Exception:
+                    value = bytes(str(value), "utf-8", errors="replace")
             log.info(
-                "[%s] NOTIFY %s: %s (%d bytes)",
+                "[%s] NOTIFY: %s (%d bytes)",
                 now,
-                characteristic.uuid,
                 hexstr(value),
                 len(value),
             )
