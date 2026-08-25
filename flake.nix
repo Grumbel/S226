@@ -38,7 +38,6 @@
 
             src = pkgs.fetchPypi {
               inherit pname version;
-              # hash will be filled by first build failure / fixed below
               hash = "sha256-W6M6lWDm/OvfXPz7HfzMhjKrRqAtuUmF2ThNGBTO04U=";
             };
 
@@ -54,20 +53,26 @@
               cryptography
               humanize
               platformdirs
+              appdirs
               prompt-toolkit
               prettytable
               pyee
-              websockets
               pyserial
               pyserial-asyncio
               pyusb
               libusb1
+              grpcio
+              protobuf
+              # Metadata pins websockets==13.1; 16.x works for our use.
+              websockets
             ];
 
-            # setuptools_scm needs a version when not a git checkout
             SETUPTOOLS_SCM_PRETEND_VERSION = version;
 
             doCheck = false;
+            # Upstream metadata pins optional/android extras and an old
+            # websockets; Nix provides compatible runtime modules instead.
+            dontCheckRuntimeDeps = true;
             pythonImportsCheck = [ "bumble" ];
           };
 
