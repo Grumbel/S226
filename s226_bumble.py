@@ -68,21 +68,64 @@ def build_a1_bind_packet(now: Optional[datetime] = None) -> bytes:
     )
 
 
+def _adv_name(data) -> str | None:
+    """Extract local name from Bumble AdvertisingData."""
+    from bumble.core import AdvertisingData
+
+    for ad_type in (
+        AdvertisingData.COMPLETE_LOCAL_NAME,
+        AdvertisingData.SHORTENED_LOCAL_NAME,
+    ):
+        try:
+            val = data.get(ad_type)
+        except Exception:
+            val = None
+        if val is None:
+            continue
+        if isinstance(val, (bytes, bytearray)):
+            try:
+                return val.decode("utf-8", errors="replace")
+            except Exception:
+                return str(val)
+        return str(val)
+    return None
+
+
+def _adv_manufacturer_ids(data) -> list[int]:
+    from bumble.core import AdvertisingData
+
+    ids: list[int] = []
+    try:
+        entries = data.get_all(AdvertisingData.MANUFACTURER_SPECIFIC_DATA)
+    except Exception:
+        entries = None
+    if not entries:
+        try:
+            one = data.get(AdvertisingData.MANUFACTURER_SPECIFIC_DATA)
+            entries = [one] if one is not None else []
+        except Exception:
+            entries = []
+    for entry in entries:
+        if entry is None:
+            continue
+        if isinstance(entry, tuple) and len(entry) >= 1:
+            ids.append(int(entry[0]))
+        elif isinstance(entry, (bytes, bytearray)) and len(entry) >= 2:
+            ids.append(int.from_bytes(entry[:2], "little"))
+    return ids
+
+
 def is_s226_adv(advertisement) -> bool:
     """Match S226 by name or manufacturer 0xf8f8 payload."""
     data = advertisement.data
-    name = None
-    try:
-        name = data.complete_local_name or data.shortened_local_name
-    except Exception:
-        pass
-    if name and "S226" in str(name):
+    name = _adv_name(data)
+    if name and "S226" in name:
         return True
-    # Manufacturer specific: company id 0xf8f8 (little-endian in AD)
+    if 0xF8F8 in _adv_manufacturer_ids(data):
+        return True
     try:
-        for company_id, payload in data.manufacturer_specific_data:
-            if company_id == 0xF8F8:
-                return True
+        if str(advertisement.address).upper().startswith("FD:32:EF:97:4A:CD"):
+            return True
     except Exception:
         pass
     return False
@@ -132,24 +175,31 @@ async def run(args: argparse.Namespace) -> int:
 
             def on_adv(advertisement) -> None:
                 nonlocal target
-                if not is_s226_adv(advertisement):
-                    return
                 addr = advertisement.address
                 key = str(addr)
+                name = _adv_name(advertisement.data)
                 if key not in seen:
                     seen[key] = addr
-                    log.info("=" * 70)
-                    log.info("S226 FOUND")
-                    log.info("=" * 70)
-                    log.info("Address: %s", addr)
-                    log.info("RSSI:    %s", advertisement.rssi)
-                    try:
-                        log.info(
-                            "Adv:     %s",
-                            advertisement.data.to_string(" | "),
-                        )
-                    except Exception:
-                        pass
+                    log.info(
+                        "  adv %s rssi=%s name=%r",
+                        addr,
+                        advertisement.rssi,
+                        name,
+                    )
+                if not is_s226_adv(advertisement):
+                    return
+                log.info("=" * 70)
+                log.info("S226 FOUND")
+                log.info("=" * 70)
+                log.info("Address: %s", addr)
+                log.info("RSSI:    %s", advertisement.rssi)
+                try:
+                    log.info(
+                        "Adv:     %s",
+                        advertisement.data.to_string(" | "),
+                    )
+                except Exception:
+                    pass
                 target = addr
                 found.set()
 
@@ -157,7 +207,14 @@ async def run(args: argparse.Namespace) -> int:
             log.info(
                 "Scanning for S226 (timeout=%ss)...", args.scan_timeout
             )
-            await device.start_scanning(filter_duplicates=False)
+            log.info("Hold the watch near the dongle (~10cm).")
+            try:
+                await device.start_scanning(
+                    filter_duplicates=False,
+                    active=True,
+                )
+            except TypeError:
+                await device.start_scanning(filter_duplicates=False)
             try:
                 await asyncio.wait_for(found.wait(), timeout=args.scan_timeout)
             except asyncio.TimeoutError:
