@@ -657,14 +657,10 @@ async def veepoo_handshake(client: BleakClient, *, enable_notify: bool = False) 
     return write_ok
 
 
-# Vendor notify UUIDs only — HID Report / Boot Mouse CCCD writes get
-# Unlikely Error and drop the ACL (seen after a good post-auth dump).
-_DEFAULT_NOTIFY_UUIDS = frozenset(
-    {
-        UUID_F008_NOTIFY.lower(),
-        UUID_F002_NOTIFY.lower(),
-    }
-)
+# Primary Veepoo notify only. f0020002 CCCD also returns Unlikely Error
+# and was tried before f008 when iterating services, so the session died
+# before f0080002 was attempted. Use --all-notify for everything else.
+_DEFAULT_NOTIFY_UUIDS = frozenset({UUID_F008_NOTIFY.lower()})
 
 
 async def subscribe_notifications(
@@ -710,6 +706,11 @@ async def subscribe_notifications(
 
     subscribed: list[BleakGATTCharacteristic] = []
 
+    # Prefer f0080002 first when several candidates are present.
+    notify_chars.sort(
+        key=lambda c: 0 if str(c.uuid).lower() == UUID_F008_NOTIFY.lower() else 1
+    )
+
     for characteristic in notify_chars:
         if not client.is_connected:
             log.info("  stopped: disconnected")
@@ -720,7 +721,6 @@ async def subscribe_notifications(
             subscribed.append(characteristic)
         except Exception as e:
             log.info("  FAILED: %s: %s", uuid_label(str(characteristic.uuid)), e)
-            # Do not continue hammering CCCDs after a protocol error.
             if "Unlikely" in str(e) or "Not connected" in str(e):
                 break
 
