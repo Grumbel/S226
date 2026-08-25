@@ -504,6 +504,13 @@ After connect the tool enables notify on `f0080002` and sends a 20-byte
 `0xA1` packet (time + profile bytes) to `f0080003`. Use `--no-auth` to
 skip that for experiments.
 
+## Device behaviour (short)
+
+* Watch UI is local-only; it does not push to the phone on its own.
+* Phone connection sets **time**, can toggle features (e.g. stopwatch menu),
+  and can start a **30 s HR** session that streams to the phone.
+* Details: [PROTOCOL.md](PROTOCOL.md).
+
 ## Remaining reverse-engineering targets
 
 * Minimal 0xA1 payload; meaning of notification opcodes (`0xA7`, `0xAD`, …)

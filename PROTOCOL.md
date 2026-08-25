@@ -141,29 +141,61 @@ Re-parsed 2026-08-25:
 
 Default tool path: **0xA1 only** (plus optional write probes). Use `--enable-notify` to retry CCCD.
 
+## Device behaviour (user observations)
+
+The watch is largely **autonomous**. Local UI actions (menus, etc.) stay
+on the device and do **not** by themselves generate phone-bound traffic.
+
+What **does** involve the phone / BLE:
+
+| Action | Effect |
+|--------|--------|
+| Phone connects (H-Band) | Sets **time** on the watch (matches 0xA1 carrying datetime) |
+| Phone feature toggles | Enable/disable watch menus (e.g. **stopwatch**) |
+| Phone starts **30 s heart-rate** | Watch runs HR session and **streams results to the phone** |
+
+So the interesting protocol surface is **phone-initiated**: time/bind,
+config flags, and measurement sessions (HR first). Passive-only use will
+not exercise notify traffic.
+
 ## Implementation status (`s226`)
 
-After a successful connect the tool:
+On connect the tool:
 
-1. Prints a **structure-only** GATT dump (no ATT reads by default).
-2. Subscribes to `f0080002` and sends the **0xA1** bind packet to
-   `f0080003` (`--no-auth` skips this).
-3. Subscribes to any remaining notify characteristics.
-4. Listens for notifications (`--listen-seconds`).
-
-Use `--read-values` only when investigating; value/descriptor reads
-still tend to drop the link.
+1. Discovers GATT services.
+2. Immediately sends the **0xA1** bind/time packet to `f0080003`
+   (`--no-auth` skips this). Happens inside the connect path so the
+   write is not lost to a post-connect race.
+3. By default **does not** call `start_notify` (`--enable-notify` opts in;
+   currently gets ATT Unlikely Error and BlueZ drops the ACL).
+4. Sends short write probes (`d8 00`, `a0 00`).
+5. Structure-only GATT dump if still connected; optional `--read-values`.
+6. Listens for `--listen` seconds.
 
 ## Open questions
 
+* How to enable CCCD on `f0080002` from Linux without Unlikely Error
 * Minimal 0xA1 payload (can profile bytes be zero?)
-* Meaning of notification opcodes `0xA7`, `0xAD`, `0xB8`, …
+* Notification opcodes `0xA7`, `0xAD`, `0xB8`, … once notify works
+* Command to **start 30 s HR** and the notify stream format
+* Commands for feature flags (stopwatch menu, etc.)
 * Role of service `f002` and `fee7` / HID
-* Whether BLE pairing/bonding is ever required (not seen in this capture)
-* Stable handle numbers across firmware versions (prefer UUIDs)
+* Stable handles across firmware (prefer UUIDs)
+
+## Next capture targets (phone HCI)
+
+While H-Band is connected, capture again for:
+
+1. Starting a **30 s heart-rate** measurement (command + notify stream)
+2. Toggling **stopwatch** (or similar) on/off in settings
+3. Any packet that is not the initial 0xA1 / `d8` / `a0` / `f4` burst
+
+Those will map directly to write probes once CCCD works, or can be
+replayed as write-only experiments before that.
 
 ## References
 
 * Phone bugreport HCI: `btsnoop_hci.log.last` inside `s226-bt.zip`
 * App: H-Band (`com.veepoo.hband`), Android 5-compatible builds exist
   (e.g. 10.5.x / 10.6.06) when the store build requires Android 6+
+* Git tip (as of this note): `a1f6288`
