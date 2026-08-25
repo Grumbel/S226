@@ -365,9 +365,12 @@ async def find_and_connect(
                 connect_timeout,
             )
 
-            # Discover the full GATT database (no services= filter). A
-            # restricted UUID list has been observed to hang discovery on
-            # some BlueZ/Bleak combinations.
+            # Stop discovery before connect. Leaving the scanner running
+            # and stopping it in finally has been observed to drop the
+            # ACL right after a successful 0xA1 write (connected=False
+            # by the time main() runs).
+            await _safe_scanner_stop(scanner)
+
             client = BleakClient(device, timeout=connect_timeout, adapter=adapter)
             try:
                 await client.connect()
@@ -376,8 +379,6 @@ async def find_and_connect(
                         "connect() returned but is_connected is False"
                     )
 
-                # Force service discovery; avoid the
-                # "Service Discovery has not been performed yet" race.
                 services = await ensure_services(client)
                 n_services = len(list(services))
                 n_chars = sum(len(s.characteristics) for s in services)
@@ -391,12 +392,13 @@ async def find_and_connect(
                     raise RuntimeError(
                         "connected but zero GATT services discovered"
                     )
-                # Bind immediately — the watch often drops the link in the
-                # gap between connect() returning and main() starting work.
                 if do_auth:
                     await veepoo_handshake(
                         client, enable_notify=enable_notify
                     )
+                log.info(
+                    "Returning client: connected=%s", client.is_connected
+                )
                 return client
             except Exception as e:
                 last_error = e
@@ -406,8 +408,12 @@ async def find_and_connect(
                         await client.disconnect()
                 except Exception:
                     pass
-                # Small gap so the peripheral can re-enter advertising.
                 await asyncio.sleep(0.5)
+                # Scanner was stopped before this attempt; restart for retry.
+                try:
+                    await scanner.start()
+                except Exception as se:
+                    log.info("scanner restart: %s: %s", type(se).__name__, se)
 
         if last_error is not None:
             raise last_error
@@ -642,15 +648,8 @@ async def veepoo_handshake(client: BleakClient, *, enable_notify: bool = False) 
             "  skipping start_notify (default; use --enable-notify to try CCCD)"
         )
 
-    # Probe while link is up (responses only visible if notify works).
-    if client.is_connected:
-        for probe in (bytes([0xD8, 0x00]), bytes([0xA0, 0x00])):
-            try:
-                await client.write_gatt_char(write_char, probe, response=False)
-                log.info("  probe write: %s", hexstr(probe))
-            except Exception as e:
-                log.info("  probe %s failed: %s: %s", hexstr(probe), type(e).__name__, e)
-                break
+    # No unsolicited probes here: unknown opcodes may drop the link.
+    # Probe from main / interactive once notify works.
 
     log.info("  handshake done (write=%s, notify=%s)", write_ok, notify_ok)
     return write_ok
