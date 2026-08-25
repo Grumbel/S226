@@ -68,6 +68,81 @@ def build_a1_bind_packet(now: Optional[datetime] = None) -> bytes:
     )
 
 
+
+# Post-bind probes from Moto G54 H-Band HCI (2026-08-25).
+PROBE_SEQUENCES = {
+    "sync": [
+        bytes([0xD8, 0x00]),
+        bytes([0xA0, 0x00]),
+    ],
+    # Mode select then stream type A (heavy 0xD1 notify traffic in capture).
+    "stream-a": [
+        bytes([0xE0, 0x00]),
+        bytes([0xE0, 0x01]),
+        bytes([0xE0, 0x02]),
+        bytes([0xD1, 0x01, 0x00, 0x00]),
+        bytes([0xD1, 0x01, 0x00, 0x01]),
+    ],
+    # Start/stop type B (0x90 notifies while running in capture).
+    "stream-b": [
+        bytes([0xE0, 0x00]),
+        bytes([0xE0, 0x01]),
+        bytes([0xE0, 0x02]),
+        bytes([0x90, 0x01, 0x00]),
+    ],
+    "stream-b-stop": [
+        bytes([0x90, 0x00, 0x00]),
+    ],
+    "d0-on": [bytes([0xD0, 0x01])],
+    "d0-off": [bytes([0xD0, 0x00])],
+}
+
+OPCODE_NAMES = {
+    0xA0: "status",
+    0xA1: "bind/time",
+    0xA3: "profile-blob",
+    0xA7: "settings-dump",
+    0xAA: "feature-flags",
+    0xAC: "settings",
+    0xAD: "status-dump",
+    0xB1: "alarm/schedule",
+    0xB2: "config",
+    0xB8: "status-dump",
+    0xB9: "config",
+    0xC7: "menu-flags",
+    0xD0: "measure-ctrl",
+    0xD1: "stream-a",
+    0xD3: "history",
+    0xD4: "history-data",
+    0xD8: "poll",
+    0xE0: "mode-select",
+    0xE1: "user-profile",
+    0x90: "stream-b",
+    0xF4: "init",
+}
+
+
+def annotate_payload(value: bytes) -> str:
+    if not value:
+        return ""
+    name = OPCODE_NAMES.get(value[0], "")
+    return f"  # {name}" if name else ""
+
+
+async def write_packets(write_char, packets, delay: float = 0.15) -> None:
+    for pkt in packets:
+        log.info(
+            "  write %s:%s",
+            hexstr(pkt),
+            annotate_payload(pkt),
+        )
+        try:
+            await write_char.write_value(pkt, with_response=False)
+        except Exception as e:
+            log.info("    failed: %s: %s", type(e).__name__, e)
+        await asyncio.sleep(delay)
+
+
 def _adv_name(data) -> str | None:
     """Extract local name from Bumble AdvertisingData."""
     from bumble.core import AdvertisingData
@@ -283,14 +358,16 @@ async def run(args: argparse.Namespace) -> int:
                     value = bytes(value)
                 except Exception:
                     value = bytes(str(value), "utf-8", errors="replace")
+            note = annotate_payload(value)
             log.info(
-                "[%s] NOTIFY: %s (%d bytes)",
+                "[%s] NOTIFY: %s (%d bytes)%s",
                 now,
                 hexstr(value),
                 len(value),
+                note,
             )
             if value and value[0] == 0xA1:
-                log.info("  ↑ 0xA1 response")
+                log.info("  ↑ 0xA1 response (bind ACK + MAC)")
 
         if args.enable_notify and notify_char is not None:
             log.info("=" * 70)
@@ -344,10 +421,33 @@ async def run(args: argparse.Namespace) -> int:
                         e,
                     )
 
+        if args.probe:
+            log.info("=" * 70)
+            log.info("PROBES: %s", ", ".join(args.probe))
+            log.info("=" * 70)
+            for name in args.probe:
+                seq = PROBE_SEQUENCES.get(name)
+                if not seq:
+                    log.info("  unknown probe %r (skip)", name)
+                    continue
+                log.info("--- probe %s ---", name)
+                await write_packets(write_char, seq)
+                await asyncio.sleep(0.5)
+
         log.info("=" * 70)
         log.info("LISTENING FOR %.1f SECONDS", args.listen)
         log.info("=" * 70)
+        log.info(
+            "If a measurement was started, leave this running; "
+            "stop with stream-b-stop / d0-off probes on next run."
+        )
         await asyncio.sleep(args.listen)
+
+        # Auto-stop stream-b if we started it
+        if args.probe and "stream-b" in args.probe and "stream-b-stop" not in args.probe:
+            log.info("Auto-stopping stream-b (90 00 00)")
+            await write_packets(write_char, PROBE_SEQUENCES["stream-b-stop"])
+            await asyncio.sleep(0.5)
 
         try:
             await connection.disconnect()
@@ -416,6 +516,17 @@ def main() -> None:
         "--notify-after-a1",
         action="store_true",
         help="Subscribe to notify after 0xA1 instead of before",
+    )
+    parser.add_argument(
+        "--probe",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "Post-bind probe sequence (repeatable): "
+            "sync, stream-a, stream-b, stream-b-stop, d0-on, d0-off. "
+            "stream-a/b are candidate HR/BP starts from phone HCI."
+        ),
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Debug logging"

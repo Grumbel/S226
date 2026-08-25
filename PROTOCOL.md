@@ -199,3 +199,99 @@ replayed as write-only experiments before that.
 * App: H-Band (`com.veepoo.hband`), Android 5-compatible builds exist
   (e.g. 10.5.x / 10.6.06) when the store build requires Android 6+
 * Git tip (as of this note): `a1f6288`
+
+---
+
+## Phone HCI capture (Moto G54, 2026-08-25)
+
+Source: `s226-bt.zip` → `FS/data/misc/bluetooth/logs/btsnoop_hci.log`.
+
+Session included heart-rate, blood pressure, alarm/countdown UI, pairing
+menu, and automatic time sync on connect. Notifications (Android) were
+not exercised.
+
+### Channel
+
+| Role | UUID | ATT handle (this firmware) |
+|------|------|----------------------------|
+| Notify | `f0080002-0451-4000-b000-000000000000` | 0x000d |
+| Write  | `f0080003-0451-4000-b000-000000000000` | 0x0011 |
+| CCCD   | 0x2902 on notify char | 0x000e ← `01 00` |
+
+Secondary notify traffic also appears on `f0020002` (handle 0x0015);
+primary command plane is **f008**.
+
+### Bind / time (0xA1)
+
+Host → device (Write Command):
+
+```text
+a1 00 00 00 | year_be | mon day hour min sec | 01 01 04 00 00 00 00 00 00
+```
+
+Device → host (notification), includes MAC:
+
+```text
+a1 00 00 06 ... cd 4a 97 ef 32 fd ...
+                 ^^^^^^^^^^^^^^^^^^^
+                 MAC LE = FD:32:EF:97:4A:CD
+```
+
+This is what sets the watch clock on phone connect.
+
+### Post-bind host writes (unique opcodes)
+
+| Write | Notes |
+|-------|--------|
+| `d8 00` | Poll / keepalive (very frequent) |
+| `a0 00` | Status query |
+| `f4 02 ...` | Early init |
+| `a3 ...` | Profile / session blob |
+| `e1 08 00 12 00 3c 02` | User profile-like fields |
+| `aa 02 00 00 01 01` | Feature flags |
+| `ac ...` | Settings |
+| `b1 ...` | Alarm / schedule (many time-bearing variants) |
+| `b2 ...` | Related config |
+| `c7 01 0N` | Menu enable bits |
+| `e0 00` / `e0 01` / `e0 02` | Mode select before measurements |
+| `d1 01 00 00` then `d1 01 00 01` | Start stream type A |
+| `d0 01` / `d0 00` | Measure control |
+| `90 01 00` / `90 00 00` | Start / stop stream type B |
+| `d3` / `d4` | History / result multi-frame |
+
+### Measurement region (HR + BP)
+
+Approximate host order in the capture:
+
+```text
+e0 00
+e0 01
+e0 02
+d1 01 00 00
+d1 01 00 01      ← dense 0xD1 notifications while active
+…
+d0 01 / d0 00
+90 01 00         ← 0x90 notifications while active
+90 00 00         ← stop
+```
+
+Notify volume in this log: **0xD1 ≈ 1647**, **0x90 ≈ 84**, **0xD0 ≈ 60**.
+Which of A/B is HR vs BP is not yet labelled; both are phone-started.
+
+### Bumble status
+
+With raw HCI (`s226-bumble`), CCCD subscribe and 0xA1 succeed. Notify
+payloads for 0xA1 / 0xA7 / 0xAD / 0xB8 observed after bind. Probes:
+
+```bash
+sudo nix run .#s226-bumble -- --transport usb:0bda:b82c \
+  --probe sync --probe stream-b --listen 90
+```
+
+### Still open
+
+* Label stream-a (0xD1) vs stream-b (0x90) as HR vs BP
+* Decode live sample fields (BPM, etc.)
+* Alarm (`b1`) and countdown exact layouts
+* Notification (ANCS-style) path — not in this capture
+* `f002` secondary channel role
