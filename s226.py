@@ -228,6 +228,9 @@ async def connect_address(
     connect_timeout: float,
     connect_retries: int,
     adapter: Optional[str] = None,
+    *,
+    do_auth: bool = True,
+    enable_notify: bool = False,
 ) -> Optional[BleakClient]:
     """Connect directly to a known address (no scan)."""
     last_error: Optional[BaseException] = None
@@ -255,6 +258,8 @@ async def connect_address(
             )
             if n_services == 0:
                 raise RuntimeError("connected but zero GATT services discovered")
+            if do_auth:
+                await veepoo_handshake(client, enable_notify=enable_notify)
             return client
         except Exception as e:
             last_error = e
@@ -284,6 +289,9 @@ async def find_and_connect(
     connect_timeout: float,
     connect_retries: int,
     adapter: Optional[str] = None,
+    *,
+    do_auth: bool = True,
+    enable_notify: bool = False,
 ) -> Optional[BleakClient]:
     """
     Scan and connect immediately when the S226 appears.
@@ -382,6 +390,12 @@ async def find_and_connect(
                 if n_services == 0:
                     raise RuntimeError(
                         "connected but zero GATT services discovered"
+                    )
+                # Bind immediately — the watch often drops the link in the
+                # gap between connect() returning and main() starting work.
+                if do_auth:
+                    await veepoo_handshake(
+                        client, enable_notify=enable_notify
                     )
                 return client
             except Exception as e:
@@ -793,12 +807,15 @@ async def main(args: argparse.Namespace) -> int:
         if args.adapter:
             log.info("Using adapter %s", args.adapter)
 
+        do_auth = not args.no_auth
         if args.address:
             client = await connect_address(
                 args.address,
                 connect_timeout=args.connect_timeout,
                 connect_retries=args.connect_retries,
                 adapter=args.adapter,
+                do_auth=do_auth,
+                enable_notify=args.enable_notify,
             )
         else:
             client = await find_and_connect(
@@ -806,30 +823,29 @@ async def main(args: argparse.Namespace) -> int:
                 connect_timeout=args.connect_timeout,
                 connect_retries=args.connect_retries,
                 adapter=args.adapter,
+                do_auth=do_auth,
+                enable_notify=args.enable_notify,
             )
 
         if client is None:
             return 1
 
         log.info("")
-        log.info("Connected and services ready.")
-
-        # Order matters: the watch drops unauthenticated links within ~1s.
-        # 1) Veepoo 0xA1 bind immediately (subscribe f0080002 + write f0080003)
-        # 2) Structure dump (local)
-        # 3) Subscribe remaining notify characteristics
-        # 4) Optional value reads last
-        if not args.no_auth and client.is_connected:
-            await veepoo_handshake(client, enable_notify=args.enable_notify)
-        elif args.no_auth:
-            log.info("Skipping Veepoo 0xA1 bind (--no-auth)")
+        log.info(
+            "Post-connect: connected=%s (auth was attempted during connect)",
+            client.is_connected,
+        )
 
         if not args.no_gatt_dump and client.is_connected:
             await dump_gatt(client, read_values=False)
+        elif not args.no_gatt_dump:
+            log.info("Skipping GATT dump (not connected)")
 
         subscribed = []
         if client.is_connected:
             subscribed = await subscribe_notifications(client)
+        else:
+            log.info("Skipping notification subscribe (not connected)")
 
         if (
             not args.no_gatt_dump
