@@ -16,12 +16,9 @@
         nixpkgs.lib.genAttrs systems (system:
           f (import nixpkgs { inherit system; }));
 
-      # Single source of truth: ./VERSION (e.g. "0.2.0-dev").
       versionBase =
         nixpkgs.lib.strings.removeSuffix "\n" (builtins.readFile ./VERSION);
 
-      # Development builds: 0.2.0-dev.<revCount>+g<shortRev>
-      # Release builds (no "-dev" in VERSION): use VERSION as-is.
       gitRev = self.shortRev or self.dirtyShortRev or "dirty";
       isDev = nixpkgs.lib.strings.hasInfix "-dev" versionBase;
       version =
@@ -31,64 +28,104 @@
           versionBase;
     in
     {
-      packages = forAllSystems (pkgs: {
-        default = pkgs.python3Packages.buildPythonApplication {
-          pname = "s226";
-          inherit version;
+      packages = forAllSystems (pkgs:
+        let
+          # Bumble is not always packaged; build from PyPI.
+          bumble = pkgs.python3Packages.buildPythonPackage rec {
+            pname = "bumble";
+            version = "0.0.215";
+            format = "pyproject";
 
-          src = ./.;
+            src = pkgs.fetchPypi {
+              inherit pname version;
+              # hash will be filled by first build failure / fixed below
+              hash = "sha256-W6M6lWDm/OvfXPz7HfzMhjKrRqAtuUmF2ThNGBTO04U=";
+            };
 
-          # Single-file script; do not expect setuptools/pyproject.
-          format = "other";
+            nativeBuildInputs = with pkgs.python3Packages; [
+              setuptools
+              setuptools-scm
+              wheel
+            ];
 
-          propagatedBuildInputs = with pkgs.python3Packages; [
-            bleak
-          ];
+            propagatedBuildInputs = with pkgs.python3Packages; [
+              aiohttp
+              click
+              cryptography
+              humanize
+              platformdirs
+              prompt-toolkit
+              prettytable
+              pyee
+              websockets
+              pyserial
+              pyserial-asyncio
+              pyusb
+              libusb1
+            ];
 
-          # Embed the full version string into the installed script.
-          # sed + explicit checks: build fails if the token is missing or
-          # substitution does not take effect (no silent fallback).
-          installPhase = ''
-            runHook preInstall
+            # setuptools_scm needs a version when not a git checkout
+            SETUPTOOLS_SCM_PRETEND_VERSION = version;
 
-            mkdir -p $out/bin
+            doCheck = false;
+            pythonImportsCheck = [ "bumble" ];
+          };
 
-            if ! grep -q '@S226_VERSION@' s226.py; then
-              echo "error: @S226_VERSION@ token missing from s226.py" >&2
-              exit 1
-            fi
+          mkScript = { name, srcFile }:
+            pkgs.python3Packages.buildPythonApplication {
+              pname = name;
+              inherit version;
+              src = ./.;
+              format = "other";
 
-            sed "s|@S226_VERSION@|${version}|g" s226.py > $out/bin/s226
+              propagatedBuildInputs = with pkgs.python3Packages; [
+                bleak
+              ] ++ (if name == "s226-bumble" then [ bumble ] else [ ]);
 
-            if grep -q '@S226_VERSION@' $out/bin/s226; then
-              echo "error: version token was not substituted" >&2
-              exit 1
-            fi
-            if ! grep -qF '${version}' $out/bin/s226; then
-              echo "error: expected version string not found in installed script" >&2
-              exit 1
-            fi
+              nativeBuildInputs = [ pkgs.makeWrapper ];
 
-            chmod +x $out/bin/s226
+              installPhase = ''
+                runHook preInstall
+                mkdir -p $out/bin
 
-            runHook postInstall
-          '';
-        };
-      });
+                if ! grep -q '@S226_VERSION@' ${srcFile}; then
+                  echo "error: @S226_VERSION@ token missing from ${srcFile}" >&2
+                  exit 1
+                fi
+
+                sed "s|@S226_VERSION@|${version}|g" ${srcFile} > $out/bin/${name}
+
+                if grep -q '@S226_VERSION@' $out/bin/${name}; then
+                  echo "error: version token was not substituted" >&2
+                  exit 1
+                fi
+
+                chmod +x $out/bin/${name}
+
+                # libusb for Bumble USB transport
+                ${if name == "s226-bumble" then ''
+                wrapProgram $out/bin/${name} \
+                  --prefix LD_LIBRARY_PATH : "${pkgs.libusb1}/lib"
+                '' else ""}
+
+                runHook postInstall
+              '';
+            };
+        in
+        {
+          default = mkScript { name = "s226"; srcFile = "s226.py"; };
+          s226 = mkScript { name = "s226"; srcFile = "s226.py"; };
+          s226-bumble = mkScript { name = "s226-bumble"; srcFile = "s226_bumble.py"; };
+        });
 
       apps = forAllSystems (pkgs: {
         default = {
           type = "app";
-          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/s226";
+          program = "${self.packages.${pkgs.system}.default}/bin/s226";
         };
-      });
-
-      devShells = forAllSystems (pkgs: {
-        default = pkgs.mkShell {
-          packages = [
-            pkgs.python3
-            pkgs.python3Packages.bleak
-          ];
+        s226-bumble = {
+          type = "app";
+          program = "${self.packages.${pkgs.system}.s226-bumble}/bin/s226-bumble";
         };
       });
     };

@@ -529,3 +529,28 @@ scan → connect → 0xA1 bind → notifications → commands (steps, HR, …)
 
 ```
 ```
+
+
+## Bumble backend (recommended on Linux)
+
+BlueZ/`bluetoothd` injects SMP pairing when it sees the watch HID service,
+which tears down the link. The Bumble tool drives the USB dongle over **raw
+HCI** and never goes through bluetoothd.
+
+```bash
+# 1. Release the dongle from BlueZ
+sudo systemctl stop bluetooth
+
+# 2. Optional: allow userspace USB access (pick your dongle from lsusb)
+# sudo chmod o+rw /dev/bus/usb/BBB/DDD
+
+# 3. Run
+nix run .#s226-bumble -- --transport usb:0
+# or with explicit address:
+nix run .#s226-bumble -- --transport usb:0 --address FD:32:EF:97:4A:CD
+```
+
+Flags: `--no-auth`, `--no-notify`, `--notify-after-a1`, `--listen SEC`,
+`--scan-timeout SEC`, `-v`.
+
+Re-enable BlueZ when done: `sudo systemctl start bluetooth`.
