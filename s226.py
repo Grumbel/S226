@@ -36,6 +36,8 @@ MANUFACTURER_ID = 0xF8F8
 UUID_F008_SERVICE = "f0080001-0451-4000-b000-000000000000"
 UUID_F008_NOTIFY = "f0080002-0451-4000-b000-000000000000"  # watch → phone
 UUID_F008_WRITE = "f0080003-0451-4000-b000-000000000000"  # phone → watch
+UUID_F002_NOTIFY = "f0020002-0451-4000-b000-000000000000"
+UUID_F002_WRITE = "f0020003-0451-4000-b000-000000000000"
 # Handles observed on this S226 unit (may differ on other firmwares):
 #   notify value 0x000d, CCCD 0x000e, write value 0x0011
 
@@ -655,8 +657,20 @@ async def veepoo_handshake(client: BleakClient, *, enable_notify: bool = False) 
     return write_ok
 
 
+# Vendor notify UUIDs only — HID Report / Boot Mouse CCCD writes get
+# Unlikely Error and drop the ACL (seen after a good post-auth dump).
+_DEFAULT_NOTIFY_UUIDS = frozenset(
+    {
+        UUID_F008_NOTIFY.lower(),
+        UUID_F002_NOTIFY.lower(),
+    }
+)
+
+
 async def subscribe_notifications(
     client: BleakClient,
+    *,
+    all_notify: bool = False,
 ) -> list[BleakGATTCharacteristic]:
     log.info("")
     log.info("=" * 70)
@@ -673,8 +687,16 @@ async def subscribe_notifications(
     for service in services:
         for characteristic in service.characteristics:
             properties = characteristic.properties
-            if "notify" in properties or "indicate" in properties:
+            if "notify" not in properties and "indicate" not in properties:
+                continue
+            uuid = str(characteristic.uuid).lower()
+            if all_notify or uuid in _DEFAULT_NOTIFY_UUIDS:
                 notify_chars.append(characteristic)
+            else:
+                log.info(
+                    "  skip (non-vendor): %s",
+                    uuid_label(str(characteristic.uuid)),
+                )
 
     def notification_handler(sender: BleakGATTCharacteristic, data: bytearray) -> None:
         now = time.strftime("%H:%M:%S")
@@ -689,20 +711,18 @@ async def subscribe_notifications(
     subscribed: list[BleakGATTCharacteristic] = []
 
     for characteristic in notify_chars:
-        # Handshake already subscribed to the primary vendor notify char.
-        if str(characteristic.uuid).lower() == UUID_F008_NOTIFY:
-            log.info(
-                "  skip (already subscribed in handshake): %s",
-                uuid_label(str(characteristic.uuid)),
-            )
-            subscribed.append(characteristic)
-            continue
+        if not client.is_connected:
+            log.info("  stopped: disconnected")
+            break
         try:
             await client.start_notify(characteristic, notification_handler)
             log.info("  subscribed: %s", uuid_label(str(characteristic.uuid)))
             subscribed.append(characteristic)
         except Exception as e:
             log.info("  FAILED: %s: %s", uuid_label(str(characteristic.uuid)), e)
+            # Do not continue hammering CCCDs after a protocol error.
+            if "Unlikely" in str(e) or "Not connected" in str(e):
+                break
 
     return subscribed
 
@@ -768,6 +788,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--enable-notify",
         action="store_true",
         help="After 0xA1, call start_notify on f0080002 (currently drops the link)",
+    )
+    parser.add_argument(
+        "--all-notify",
+        action="store_true",
+        help="Subscribe to all notify/indicate chars (includes HID; often disconnects)",
     )
     parser.add_argument(
         "--adapter",
@@ -842,7 +867,7 @@ async def main(args: argparse.Namespace) -> int:
 
         subscribed = []
         if client.is_connected:
-            subscribed = await subscribe_notifications(client)
+            subscribed = await subscribe_notifications(client, all_notify=args.all_notify)
         else:
             log.info("Skipping notification subscribe (not connected)")
 
