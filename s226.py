@@ -866,10 +866,17 @@ async def main(args: argparse.Namespace) -> int:
             log.info("Skipping GATT dump (not connected)")
 
         subscribed = []
-        if client.is_connected:
-            subscribed = await subscribe_notifications(client, all_notify=args.all_notify)
-        else:
+        if not client.is_connected:
             log.info("Skipping notification subscribe (not connected)")
+        elif args.enable_notify or args.all_notify:
+            subscribed = await subscribe_notifications(
+                client, all_notify=args.all_notify
+            )
+        else:
+            log.info(
+                "Skipping notification subscribe "
+                "(default; --enable-notify to try f0080002 CCCD)"
+            )
 
         if (
             not args.no_gatt_dump
