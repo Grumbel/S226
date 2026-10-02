@@ -143,6 +143,10 @@
               pkgs.qt6.qtmultimedia
             ];
             cmakeFlags = [ "-DS226_VERSION=${version}" ];
+            # Qt Multimedia dlopen()s PipeWire for audio output.
+            qtWrapperArgs = [
+              "--prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [ pkgs.pipewire ]}"
+            ];
             doCheck = true;
           };
         in

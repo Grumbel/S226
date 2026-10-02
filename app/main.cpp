@@ -1,10 +1,20 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QLoggingCategory>
 #include <QTimer>
 
 #include "main_window.hpp"
 
 int main(int argc, char** argv) {
+  // Qt Multimedia only plays the metronome click. Skip FFmpeg's hardware
+  // codec probing (it loads VDPAU/VA-API drivers and complains when they are
+  // missing) and its version banner. Explicit settings from the environment win.
+  for (const char* var : {"QT_FFMPEG_DECODING_HW_DEVICE_TYPES",
+                          "QT_FFMPEG_ENCODING_HW_DEVICE_TYPES"}) {
+    if (!qEnvironmentVariableIsSet(var)) qputenv(var, ",");
+  }
+  QLoggingCategory::setFilterRules(QStringLiteral("qt.multimedia.ffmpeg.info=false"));
+
   QApplication app(argc, argv);
   QApplication::setOrganizationName("s226");
   QApplication::setApplicationName("s226-hr");
