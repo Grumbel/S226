@@ -116,9 +116,39 @@
                 runHook postInstall
               '';
             };
+
+          s226-hr = pkgs.stdenv.mkDerivation {
+            pname = "s226-hr";
+            inherit version;
+            src = nixpkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = nixpkgs.lib.fileset.unions [
+                ./CMakeLists.txt
+                ./VERSION
+                ./lib
+                ./cli
+                ./app
+                ./udev
+              ];
+            };
+
+            nativeBuildInputs = [
+              pkgs.cmake
+              pkgs.pkg-config
+              pkgs.qt6.wrapQtAppsHook
+            ];
+            buildInputs = [
+              pkgs.libusb1
+              pkgs.qt6.qtbase
+              pkgs.qt6.qtmultimedia
+            ];
+            cmakeFlags = [ "-DS226_VERSION=${version}" ];
+            doCheck = true;
+          };
         in
         {
-          default = mkScript { name = "s226"; srcFile = "s226.py"; };
+          default = s226-hr;
+          inherit s226-hr;
           s226 = mkScript { name = "s226"; srcFile = "s226.py"; };
           s226-bumble = mkScript { name = "s226-bumble"; srcFile = "s226_bumble.py"; };
         });
@@ -126,11 +156,26 @@
       apps = forAllSystems (pkgs: {
         default = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.default}/bin/s226";
+          program = "${self.packages.${pkgs.system}.s226-hr}/bin/s226-hr";
+        };
+        s226-hr = self.apps.${pkgs.system}.default;
+        s226-cli = {
+          type = "app";
+          program = "${self.packages.${pkgs.system}.s226-hr}/bin/s226-cli";
+        };
+        s226 = {
+          type = "app";
+          program = "${self.packages.${pkgs.system}.s226}/bin/s226";
         };
         s226-bumble = {
           type = "app";
           program = "${self.packages.${pkgs.system}.s226-bumble}/bin/s226-bumble";
+        };
+      });
+
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          inputsFrom = [ self.packages.${pkgs.system}.s226-hr ];
         };
       });
     };

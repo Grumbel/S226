@@ -3,6 +3,75 @@
 
 Reverse engineering the Bluetooth Low Energy protocol of the **S226 fitness tracker/watch**, with the goal of communicating with it from Linux without the proprietary H-Band application.
 
+## Heart-rate app (C++ / Qt)
+
+```bash
+nix run .#              # GUI: s226-hr
+nix run .#s226-cli -- --list
+nix run .#s226-cli      # terminal heart rate (-v for protocol log, --bp for blood pressure)
+```
+
+`s226-hr` shows the live heart rate as a big number that scales with the
+window, with today's step count below it (refreshed every
+3 s from the watch's own counter) (F11 / Esc for full screen, Ctrl+L for the log). Tick
+**Metronome** (or press M) to get a click on every beat; the heart icon
+pulses along either way. It connects on start (`--no-connect` to skip),
+reconnects when the watch drops out, and restarts the measurement each
+time the watch ends one by itself (after ~30-50 s).
+
+### Picking the Bluetooth dongle
+
+The app drives a USB Bluetooth controller directly over raw HCI (like
+Bumble), so BlueZ cannot interfere. Controllers are found by their USB
+Bluetooth interface (class e0/01/01), not by name. That matters for
+WiFi/BT combo chips such as `0bda:b82c`, which calls itself "802.11ac
+NIC". Only the Bluetooth interface is taken over; WiFi on the same chip
+keeps working.
+
+`s226-cli --list` prints what is available. Wherever a controller can be
+chosen (`--controller` in both tools, the drop-down in the GUI), any of
+these work:
+
+| Selector | Example |
+|----------|---------|
+| automatic (default) | `auto` |
+| index from `--list` | `0` |
+| vendor:product | `0bda:b82c` (`usb:0bda:b82c` also accepted) |
+| USB port path | `1-10.1` |
+| kernel adapter name | `hci0` |
+
+While the app runs, the kernel's `btusb` driver is detached from that
+dongle (the `hciN` adapter disappears) and it is re-attached on exit.
+`bluetoothd` does not need to be stopped, but anything else using that
+adapter loses it in the meantime.
+
+**Permissions:** the user needs read/write access to
+`/dev/bus/usb/BBB/DDD`. `udev/70-s226-bluetooth.rules` grants it to the
+logged-in user for every USB Bluetooth controller. On NixOS, add the
+package to `services.udev.packages` (it installs the rule to
+`lib/udev/rules.d`).
+
+**Realtek dongles** need the kernel to have loaded their patch firmware
+once (it survives the takeover). If the log warns about "unpatched"
+firmware, re-plug the dongle and try again.
+
+### Code layout
+
+| Path | What |
+|------|------|
+| `lib/` | `s226ble` library, plain C++20 + libusb, no Qt |
+| `lib/include/s226/protocol.hpp` | S226 packet builders and decoders (pure functions) |
+| `lib/include/s226/usb.hpp` | USB Bluetooth controller discovery and selectors |
+| `lib/include/s226/watch.hpp` | `s226::Watch`: scan, connect, bind, heart rate / blood pressure |
+| `lib/src/` | private: libusb HCI transport, minimal LE host (HCI, L2CAP, ATT) |
+| `app/` | Qt 6 GUI (`s226-hr`) |
+| `cli/` | `s226-cli` |
+
+Development: `nix develop`, then `cmake -B build && cmake --build build && ctest --test-dir build`.
+
+The Python tools (`s226.py`, `s226_bumble.py`) are still available as
+`nix run .#s226` / `nix run .#s226-bumble`.
+
 ## Hardware
 
 Observed device information:
@@ -550,7 +619,18 @@ nix run .#s226-bumble -- --transport usb:0
 nix run .#s226-bumble -- --transport usb:0 --address FD:32:EF:97:4A:CD
 ```
 
-Flags: `--no-auth`, `--no-notify`, `--notify-after-a1`, `--listen SEC`,
+### Live heart rate
+
+```bash
+sudo nix run .#s226-bumble -- --transport usb:0 --hr
+```
+
+Binds, sends `d0 01`, and shows the BPM as it streams in (~1/s). The
+watch ends a session after ~30-50 s; the tool restarts it automatically.
+Ctrl-C sends `d0 00` and disconnects. `--hr-duration SEC` stops after a
+fixed time. Blood-pressure results (`--probe bp`) are decoded too.
+
+Flags: `--hr`, `--hr-duration SEC`, `--no-auth`, `--no-notify`, `--notify-after-a1`, `--listen SEC`,
 `--scan-timeout SEC`, `-v`.
 
 Re-enable BlueZ when done: `sudo systemctl start bluetooth`.

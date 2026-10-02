@@ -1,0 +1,7 @@
+# Give the logged-in desktop user access to USB Bluetooth controllers so
+# s226-hr can drive them over raw HCI without root.
+#
+# Matches any USB device with a Bluetooth HCI interface (class e0/01/01).
+# Note this lets local users take any such controller away from the
+# kernel's Bluetooth stack.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}=="*:e00101:*", TAG+="uaccess"
