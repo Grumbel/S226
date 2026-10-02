@@ -95,7 +95,15 @@ PROBE_SEQUENCES = {
     ],
     "d0-on": [bytes([0xD0, 0x01])],
     "d0-off": [bytes([0xD0, 0x00])],
+    "hr": [bytes([0xD0, 0x01])],
+    "hr-stop": [bytes([0xD0, 0x00])],
+    "bp": [bytes([0x90, 0x01, 0x00])],
+    "bp-stop": [bytes([0x90, 0x00, 0x00])],
 }
+
+HR_START = bytes([0xD0, 0x01])
+HR_STOP = bytes([0xD0, 0x00])
+KEEPALIVE = bytes([0xD8, 0x00])
 
 OPCODE_NAMES = {
     0xA0: "status",
@@ -110,14 +118,14 @@ OPCODE_NAMES = {
     0xB8: "status-dump",
     0xB9: "config",
     0xC7: "menu-flags",
-    0xD0: "measure-ctrl",
-    0xD1: "stream-a",
+    0xD0: "heart-rate",
+    0xD1: "daily-history",
     0xD3: "history",
     0xD4: "history-data",
     0xD8: "poll",
     0xE0: "mode-select",
     0xE1: "user-profile",
-    0x90: "stream-b",
+    0x90: "blood-pressure",
     0xF4: "init",
 }
 
@@ -127,6 +135,87 @@ def annotate_payload(value: bytes) -> str:
         return ""
     name = OPCODE_NAMES.get(value[0], "")
     return f"  # {name}" if name else ""
+
+
+def decode_hr(value: bytes) -> Optional[int]:
+    """0xD0 live heart-rate notification -> BPM, or None if not a sample.
+
+    Watch sends ``d0 <bpm> 00 00 00 <status> ...`` about once per second
+    after ``d0 01``. bpm=0 while the sensor settles; ``d0 01`` with all
+    zeros is sent (twice) when the watch ends the measurement.
+    """
+    if len(value) < 2 or value[0] != 0xD0:
+        return None
+    return value[1]
+
+
+def decode_bp(value: bytes) -> Optional[str]:
+    """0x90 blood-pressure notification -> human-readable string."""
+    if len(value) < 6 or value[0] != 0x90:
+        return None
+    sys_, dia, pct = value[1], value[2], value[3]
+    if pct == 100 and sys_ and dia:
+        return f"BP {sys_}/{dia} mmHg"
+    if value[0:2] == b"\x90\x01":
+        return "BP stopped"
+    return f"BP measuring {pct}%"
+
+
+class HeartRateDisplay:
+    """Single-line live BPM display (one line per sample if not a TTY)."""
+
+    def __init__(self) -> None:
+        self.tty = sys.stdout.isatty()
+        self.last_sample = time.monotonic()
+        self.bpm: Optional[int] = None
+
+    def update(self, bpm: int) -> None:
+        self.last_sample = time.monotonic()
+        stamp = time.strftime("%H:%M:%S")
+        if bpm <= 1:
+            text = f"[{stamp}] \u2665  --- bpm  (measuring...)"
+        else:
+            self.bpm = bpm
+            text = f"[{stamp}] \u2665  {bpm:3d} bpm"
+        if self.tty:
+            sys.stdout.write("\r\x1b[K" + text)
+            sys.stdout.flush()
+        else:
+            print(text, flush=True)
+
+    def message(self, text: str) -> None:
+        if self.tty:
+            sys.stdout.write("\r\x1b[K")
+        print(text, flush=True)
+
+
+async def run_heart_rate(write_char, display: HeartRateDisplay,
+                         duration: Optional[float]) -> None:
+    """Start HR, keep it alive, restart when the watch ends a session."""
+    display.message("Starting heart-rate measurement (Ctrl-C to stop)...")
+    await write_char.write_value(HR_START, with_response=False)
+    display.last_sample = time.monotonic()
+    deadline = None if duration is None else time.monotonic() + duration
+    next_keepalive = time.monotonic() + 3.0
+    try:
+        while deadline is None or time.monotonic() < deadline:
+            await asyncio.sleep(0.5)
+            now = time.monotonic()
+            if now >= next_keepalive:
+                await write_char.write_value(KEEPALIVE, with_response=False)
+                next_keepalive = now + 3.0
+            # Watch ends a session on its own after ~30-50 s; restart.
+            if now - display.last_sample > 5.0:
+                log.debug("no HR sample for 5 s, restarting measurement")
+                await write_char.write_value(HR_START, with_response=False)
+                display.last_sample = now
+    finally:
+        display.message("Stopping heart-rate measurement.")
+        try:
+            await write_char.write_value(HR_STOP, with_response=False)
+            await asyncio.sleep(0.3)
+        except Exception:
+            pass
 
 
 async def write_packets(write_char, packets, delay: float = 0.15) -> None:
@@ -349,6 +438,8 @@ async def run(args: argparse.Namespace) -> int:
             log.error("Missing write characteristic %s", UUID_F008_WRITE)
             return 1
 
+        hr_display = HeartRateDisplay() if args.hr else None
+
         # Optional: enable notify first (phone order) or after A1
         def on_notify(value: bytes) -> None:
             # Bumble passes only the value (decoded bytes).
@@ -358,6 +449,20 @@ async def run(args: argparse.Namespace) -> int:
                     value = bytes(value)
                 except Exception:
                     value = bytes(str(value), "utf-8", errors="replace")
+            value = bytes(value)
+            if hr_display is not None:
+                bpm = decode_hr(value)
+                if bpm is not None:
+                    # d0 01 (end-of-session marker) -> let watchdog restart
+                    if value[1:].strip(b"\x00") != b"\x01":
+                        hr_display.update(bpm)
+                    return
+                bp = decode_bp(value)
+                if bp is not None:
+                    hr_display.message(bp)
+                    return
+                log.debug("[%s] NOTIFY: %s", now, hexstr(value))
+                return
             note = annotate_payload(value)
             log.info(
                 "[%s] NOTIFY: %s (%d bytes)%s",
@@ -420,6 +525,18 @@ async def run(args: argparse.Namespace) -> int:
                         type(e).__name__,
                         e,
                     )
+
+        if args.hr:
+            if notify_char is None or not args.enable_notify:
+                log.error("--hr needs notifications on %s", UUID_F008_NOTIFY)
+                return 1
+            await asyncio.sleep(0.5)  # let the post-bind dump arrive
+            await run_heart_rate(write_char, hr_display, args.hr_duration)
+            try:
+                await connection.disconnect()
+            except Exception:
+                pass
+            return 0
 
         if args.probe:
             log.info("=" * 70)
@@ -524,9 +641,21 @@ def main() -> None:
         metavar="NAME",
         help=(
             "Post-bind probe sequence (repeatable): "
-            "sync, stream-a, stream-b, stream-b-stop, d0-on, d0-off. "
-            "stream-a/b are candidate HR/BP starts from phone HCI."
+            "sync, stream-a, stream-b, stream-b-stop, d0-on, d0-off, "
+            "hr, hr-stop, bp, bp-stop."
         ),
+    )
+    parser.add_argument(
+        "--hr",
+        action="store_true",
+        help="Live heart-rate display (0xD0 measurement) until Ctrl-C",
+    )
+    parser.add_argument(
+        "--hr-duration",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="With --hr: stop after SEC seconds instead of running forever",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Debug logging"

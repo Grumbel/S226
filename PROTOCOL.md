@@ -254,29 +254,78 @@ This is what sets the watch clock on phone connect.
 | `b2 ...` | Related config |
 | `c7 01 0N` | Menu enable bits |
 | `e0 00` / `e0 01` / `e0 02` | Mode select before measurements |
-| `d1 01 00 00` then `d1 01 00 01` | Start stream type A |
-| `d0 01` / `d0 00` | Measure control |
-| `90 01 00` / `90 00 00` | Start / stop stream type B |
-| `d3` / `d4` | History / result multi-frame |
+| `d1 01 00 0N` | Read daily history for day N (0=today) |
+| `d0 01` / `d0 00` | **Heart rate** start / stop |
+| `90 01 00` / `90 00 00` | **Blood pressure** start / stop |
+| `d3` / `d4` | Stored measurement records (multi-frame) |
 
-### Measurement region (HR + BP)
-
-Approximate host order in the capture:
+### Heart rate (0xD0) — decoded
 
 ```text
-e0 00
-e0 01
-e0 02
-d1 01 00 00
-d1 01 00 01      ← dense 0xD1 notifications while active
-…
-d0 01 / d0 00
-90 01 00         ← 0x90 notifications while active
-90 00 00         ← stop
+host:  d0 01                       start (Write Command, 0x0011)
+watch: d0 00 00 00 00 02 ...       ack, measuring
+watch: d0 <bpm> 00 00 00 00 ...    ~1 Hz while measuring (0 while settling)
+watch: d0 01 00 ... (x2)           watch ended the session (~30-50 s)
+host:  d0 00                       stop -> watch acks d0 00 ...
 ```
 
-Notify volume in this log: **0xD1 ≈ 1647**, **0x90 ≈ 84**, **0xD0 ≈ 60**.
-Which of A/B is HR vs BP is not yet labelled; both are phone-started.
+Capture: `d0 01` at 17:52:13, then `d0 80` (128), `d0 7f`, ... `d0 7d`
+once per second until the watch sent `d0 01` twice ~47 s later. Note the
+watch kept streaming for ~20 s after the host `d0 00`.
+
+### Blood pressure (0x90) — decoded
+
+```text
+host:  90 01 00                    start
+watch: 90 00 00 <pct> 00 01 ...    progress, pct 0..100 (~every 1.26 s)
+watch: 90 <sys> <dia> 64 00 01     result at 100 %, e.g. 8f 5f = 143/95
+host:  90 00 00                    stop -> watch acks 90 01 00 ...
+```
+
+H-Band also writes CCCD `01 00` on handle 0x0016 (`f0020002`) before
+`90 01 00`; the watch then streams raw 12-bit PPG samples (u16 LE,
+10 per notification) on 0x0015.
+
+### Steps / distance / calories (0xD8) — decoded
+
+The `d8 00` poll H-Band sends every few seconds returns today's totals:
+
+```text
+d8 00 | steps u32le | distance u32le | calories u32le | 00 ...
+d8 00   ec 1e 00 00   e3 1c 00 00      e4 12 00 00       (2026-08-24 16:24)
+        7916 steps    7395 m           4836 (483.6 kcal?)
+```
+
+Verified: these equal the sums of the 0xD1 history slots for the same
+day up to the same time, field by field. Calorie units are a guess
+(0.1 kcal). The 2026-08-25 capture returns all zeros because the watch
+logged no steps that day (its history is zero too).
+
+### Daily history (0xD1) — decoded
+
+`d1 01 00 0N` requests day N (0 = today, 1 = yesterday, ...). The watch
+answers with one 20-byte frame per 5-minute slot. Note the mixed
+endianness:
+
+| Offset | Content |
+|--------|---------|
+| 0 | `d1` |
+| 1-2 | frame index, u16 LE (1-based) |
+| 3-4 | frame count, u16 LE (today: slots so far) |
+| 5 | hour \| (day offset << 5), e.g. `0x27` = yesterday 07:xx |
+| 6-7 | calories, u16 **BE** |
+| 8-9 | distance (m), u16 BE |
+| 10-11 | steps, u16 BE |
+| 12-13 | activity / "sport value", u16 BE (meaning unverified) |
+| 14-16 | unknown (14 is set in alternate slots) |
+| 17 | heart rate average for the slot |
+| 18 | unknown |
+| 19 | minute (0, 5, ..., 55) |
+
+The steps column varies independently, while distance and calories keep
+a fixed ratio to each other. That is what you would expect if distance
+is derived from steps using a cadence-dependent stride, and calories
+from distance.
 
 ### Bumble status
 
@@ -290,8 +339,8 @@ sudo nix run .#s226-bumble -- --transport usb:0bda:b82c \
 
 ### Still open
 
-* Label stream-a (0xD1) vs stream-b (0x90) as HR vs BP
-* Decode live sample fields (BPM, etc.)
+* Meaning of the trailing status byte in 0xD0 / 0x90 frames
+* 0xD1 bytes 12-16 and 18; calorie units; 0xD3/0xD4 records
 * Alarm (`b1`) and countdown exact layouts
 * Notification (ANCS-style) path — not in this capture
 * `f002` secondary channel role
