@@ -126,6 +126,10 @@ struct Watch::Impl {
     bool failed = false;
     try {
       setState(WatchState::OpeningController);
+      if (!opts.address.empty() && !addressFromString(opts.address)) {
+        throw std::runtime_error("Invalid watch address '" + opts.address +
+                                 "', expected XX:XX:XX:XX:XX:XX");
+      }
       std::string err;
       auto controller = findUsbController(opts.controller, &err);
       if (!controller) throw std::runtime_error(err);

@@ -23,7 +23,8 @@ class MainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
-  explicit MainWindow(const QString& controllerOverride, QWidget* parent = nullptr);
+  MainWindow(const QString& controllerOverride, const QString& addressOverride,
+             QWidget* parent = nullptr);
   ~MainWindow() override;
 
   void connectWatch();
@@ -36,6 +37,8 @@ private:
   void buildUi();
   void refreshControllers();
   QString selectedController() const;
+  QString selectedWatch() const; // "" = any S226
+  void rememberWatch(const QString& address);
   void onStateChanged(s226::WatchState state, const QString& detail);
   void onHeartRate(int bpm);
   void checkStale();
@@ -51,6 +54,7 @@ private:
   TrendGraph* graph_ = nullptr;
   QComboBox* graphWindowBox_ = nullptr;
   QComboBox* controllerBox_ = nullptr;
+  QComboBox* watchBox_ = nullptr;
   QPushButton* connectButton_ = nullptr;
   QPushButton* bpButton_ = nullptr;
   QCheckBox* metronomeBox_ = nullptr;

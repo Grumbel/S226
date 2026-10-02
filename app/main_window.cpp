@@ -8,7 +8,9 @@
 #include <QDockWidget>
 #include <QLabel>
 #include <QLocale>
+#include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 #include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
@@ -25,6 +27,14 @@
 namespace {
 
 constexpr int kStaleMs = 6000;
+constexpr int kMaxKnownWatches = 8;
+// Bump when the toolbar layout changes so stale saved layouts are ignored.
+constexpr int kWindowStateVersion = 2;
+
+bool isAddress(const QString& s) {
+  static const QRegularExpression re(QStringLiteral("^([0-9A-F]{2}:){5}[0-9A-F]{2}$"));
+  return re.match(s).hasMatch();
+}
 
 QString stateText(s226::WatchState state, const QString& detail) {
   using S = s226::WatchState;
@@ -42,7 +52,8 @@ QString stateText(s226::WatchState state, const QString& detail) {
 
 } // namespace
 
-MainWindow::MainWindow(const QString& controllerOverride, QWidget* parent)
+MainWindow::MainWindow(const QString& controllerOverride, const QString& addressOverride,
+                       QWidget* parent)
     : QMainWindow(parent), controllerOverride_(controllerOverride) {
   setWindowTitle(tr("S226 Heart Rate"));
   buildUi();
@@ -81,11 +92,17 @@ MainWindow::MainWindow(const QString& controllerOverride, QWidget* parent)
 
   QSettings settings;
   restoreGeometry(settings.value("geometry").toByteArray());
+  const QString watch = addressOverride.isEmpty() ? settings.value("watch").toString()
+                                                  : addressOverride.trimmed().toUpper();
+  if (!watch.isEmpty()) {
+    if (watchBox_->findText(watch) < 0) watchBox_->addItem(watch, watch);
+    watchBox_->setCurrentIndex(watchBox_->findText(watch));
+  }
   const int graphIdx = graphWindowBox_->findData(settings.value("graphWindow", 300).toInt());
   graphWindowBox_->setCurrentIndex(graphIdx >= 0 ? graphIdx : 1);
   graph_->setWindowSeconds(graphWindowBox_->currentData().toInt());
   loadHistory();
-  restoreState(settings.value("windowState").toByteArray());
+  restoreState(settings.value("windowState").toByteArray(), kWindowStateVersion);
   metronomeBox_->setChecked(settings.value("metronome", false).toBool());
   volumeSlider_->setValue(settings.value("volume", 60).toInt());
 
@@ -105,7 +122,7 @@ void MainWindow::buildUi() {
   layout->addWidget(graph_, 1);
   setCentralWidget(central);
 
-  auto* bar = addToolBar(tr("Main"));
+  auto* bar = addToolBar(tr("Connection"));
   bar->setObjectName("mainToolBar");
   bar->setMovable(false);
 
@@ -121,6 +138,21 @@ void MainWindow::buildUi() {
   refresh->setToolTip(tr("Look for USB Bluetooth controllers again"));
   connect(refresh, &QToolButton::clicked, this, &MainWindow::refreshControllers);
   bar->addWidget(refresh);
+  bar->addWidget(new QLabel(tr("Watch:"), bar));
+  watchBox_ = new QComboBox(bar);
+  watchBox_->setEditable(true);
+  watchBox_->setInsertPolicy(QComboBox::NoInsert);
+  watchBox_->setMinimumContentsLength(17);
+  watchBox_->addItem(tr("Any S226"), QString());
+  watchBox_->lineEdit()->setPlaceholderText(QStringLiteral("XX:XX:XX:XX:XX:XX"));
+  watchBox_->setToolTip(
+      tr("Connect to any S226, or only to the watch with this Bluetooth address.\n"
+         "Watches connected before are listed; the watch shows the last two bytes."));
+  for (const QString& a : QSettings().value("knownWatches").toStringList()) {
+    if (isAddress(a)) watchBox_->addItem(a, a);
+  }
+  bar->addWidget(watchBox_);
+
 
   connectButton_ = new QPushButton(tr("Connect"), bar);
   connect(connectButton_, &QPushButton::clicked, this, [this] {
@@ -131,7 +163,12 @@ void MainWindow::buildUi() {
     }
   });
   bar->addWidget(connectButton_);
-  bar->addSeparator();
+
+  // Second row: display controls, so nothing ends up in the overflow menu.
+  addToolBarBreak();
+  bar = addToolBar(tr("Display"));
+  bar->setObjectName("displayToolBar");
+  bar->setMovable(false);
 
   metronomeBox_ = new QCheckBox(tr("&Metronome"), bar);
   metronomeBox_->setToolTip(tr("Click along with the heart rate (M)"));
@@ -244,6 +281,23 @@ void MainWindow::refreshControllers() {
   }
 }
 
+QString MainWindow::selectedWatch() const {
+  const QString text = watchBox_->currentText().trimmed();
+  if (text.isEmpty() || text == watchBox_->itemText(0)) return {};
+  return text.toUpper();
+}
+
+void MainWindow::rememberWatch(const QString& address) {
+  if (!isAddress(address)) return;
+  QSettings settings;
+  QStringList known = settings.value("knownWatches").toStringList();
+  known.removeAll(address);
+  known.prepend(address);
+  while (known.size() > kMaxKnownWatches) known.removeLast();
+  settings.setValue("knownWatches", known);
+  if (watchBox_->findText(address) < 0) watchBox_->addItem(address, address);
+}
+
 QString MainWindow::selectedController() const {
   if (!controllerOverride_.isEmpty() && controllerBox_->currentIndex() <= 0) {
     return controllerOverride_;
@@ -253,10 +307,19 @@ QString MainWindow::selectedController() const {
 
 void MainWindow::connectWatch() {
   if (active_) return;
+  const QString watch = selectedWatch();
+  if (!watch.isEmpty() && !isAddress(watch)) {
+    const QString msg = tr("Invalid watch address \"%1\", expected XX:XX:XX:XX:XX:XX").arg(watch);
+    stateLabel_->setText(msg);
+    view_->setStatus(msg);
+    return;
+  }
   active_ = true;
+  QSettings().setValue("watch", watch);
   QSettings().setValue("controller", controllerBox_->currentData().toString());
-  appendLog(tr("Starting (controller: %1)").arg(selectedController()));
-  bridge_.start(selectedController());
+  appendLog(tr("Starting (controller: %1, watch: %2)")
+                .arg(selectedController(), watch.isEmpty() ? tr("any S226") : watch));
+  bridge_.start(selectedController(), watch);
   onStateChanged(s226::WatchState::OpeningController, {});
 }
 
@@ -274,6 +337,8 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   }
   connectButton_->setText(active_ ? tr("Disconnect") : tr("Connect"));
   controllerBox_->setEnabled(!active_);
+  watchBox_->setEnabled(!active_);
+  if (state == s226::WatchState::Connected) rememberWatch(detail);
   bpButton_->setEnabled(state == s226::WatchState::Connected);
   if (state != s226::WatchState::Connected) {
     stepRate_.reset();
@@ -350,7 +415,7 @@ void MainWindow::toggleFullScreen() {
 void MainWindow::closeEvent(QCloseEvent* event) {
   QSettings settings;
   settings.setValue("geometry", saveGeometry());
-  settings.setValue("windowState", saveState());
+  settings.setValue("windowState", saveState(kWindowStateVersion));
   settings.setValue("metronome", metronomeBox_->isChecked());
   settings.setValue("volume", volumeSlider_->value());
   settings.setValue("graphWindow", graphWindowBox_->currentData().toInt());

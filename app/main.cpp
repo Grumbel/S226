@@ -34,12 +34,14 @@ int main(int argc, char** argv) {
       {"c", "controller"},
       "USB Bluetooth controller: index, vid:pid, port path or hciN (see s226-cli --list).",
       "selector");
+  QCommandLineOption addressOpt(
+      {"a", "address"}, "Only connect to the watch with this Bluetooth address.", "address");
   QCommandLineOption noConnectOpt("no-connect", "Do not connect automatically on start.");
   QCommandLineOption fullScreenOpt({"f", "fullscreen"}, "Start in full-screen mode.");
-  parser.addOptions({controllerOpt, noConnectOpt, fullScreenOpt});
+  parser.addOptions({controllerOpt, addressOpt, noConnectOpt, fullScreenOpt});
   parser.process(app);
 
-  MainWindow window(parser.value(controllerOpt));
+  MainWindow window(parser.value(controllerOpt), parser.value(addressOpt));
   if (parser.isSet(fullScreenOpt)) {
     window.showFullScreen();
   } else {

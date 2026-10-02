@@ -33,9 +33,10 @@ WatchBridge::~WatchBridge() {
   watch_->stop();
 }
 
-void WatchBridge::start(const QString& controller) {
+void WatchBridge::start(const QString& controller, const QString& address) {
   s226::WatchOptions opts;
   opts.controller = controller.toStdString();
+  opts.address = address.toStdString();
   opts.startHeartRate = true;
   opts.reconnect = true;
   watch_->start(opts);

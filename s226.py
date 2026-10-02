@@ -107,12 +107,12 @@ def is_s226(device: BLEDevice, advertisement_data: AdvertisementData) -> bool:
     if name == WATCH_NAME:
         return True
 
-    # The S226 we've observed advertises:
+    # An S226 advertises (example address):
     #
     #   manufacturer ID: f8f8
-    #   data: CD 4A 97 EF 32 FD
+    #   data: AB 89 67 45 23 C1
     #
-    # which is the BLE address FD:32:EF:97:4A:CD in reverse byte order.
+    # which is the BLE address C1:23:45:67:89:AB in reverse byte order.
     data = advertisement_data.manufacturer_data.get(MANUFACTURER_ID)
 
     if data is not None and len(data) == 6:

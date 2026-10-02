@@ -5,6 +5,8 @@ s226-hr \- live heart-rate display for the S226 fitness watch
 .B s226-hr
 .RB [ \-c
 .IR selector ]
+.RB [ \-a
+.IR address ]
 .RB [ \-\-no\-connect ]
 .RB [ \-f ]
 .RI [ "Qt options" ]
@@ -21,6 +23,14 @@ The watch ends a heart-rate measurement on its own after 30 to 50
 seconds; the program restarts it automatically.
 When the watch goes out of range it keeps scanning and reconnects.
 To make the watch connectable, wake it by pressing its button.
+.PP
+By default the program connects to the first watch that advertises as
+S226.
+With several watches around, pick one in the
+.B Watch
+field of the toolbar: it lists the watches connected to before, and
+accepts an address typed in.
+A watch shows the last two bytes of its address.
 .PP
 The cadence is measured between the moments the watch's step counter
 changes, so it follows the watch's own update rate.
@@ -49,6 +59,12 @@ See
 below.
 Without this option the controller chosen in the toolbar last time is
 used, or the first available one.
+.TP
+.BR \-a ", " \-\-address " " \fIaddress\fR
+Only connect to the watch with this Bluetooth address, written as
+.IR XX:XX:XX:XX:XX:XX .
+Without this option the watch chosen in the toolbar last time is used;
+by default any watch advertising as S226.
 .TP
 .B \-\-no\-connect
 Do not connect automatically on start.
@@ -132,8 +148,8 @@ Each row holds one reading; the other column is empty.
 The graph is refilled from the last two hours of these files on start.
 .TP
 .I ~/.config/s226/s226\-hr.conf
-Settings: selected controller, metronome, volume, graph time span and
-window geometry.
+Settings: selected controller and watch, watches connected to before,
+metronome, volume, graph time span and window geometry.
 .TP
 .I /usr/lib/udev/rules.d/70\-s226\-bluetooth.rules
 udev rule that gives the logged-in user access to USB Bluetooth

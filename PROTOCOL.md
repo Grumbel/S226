@@ -9,9 +9,9 @@ Veepoo stack) against a real unit and a phone HCI capture
 | Field | Value |
 |-------|--------|
 | Advertised name | `S226` |
-| Address (this unit) | `FD:32:EF:97:4A:CD` (random) |
+| Address | random static, e.g. `C1:23:45:67:89:AB` (all addresses in these notes are replaced by this example) |
 | Manufacturer ID | `0xF8F8` |
-| Manufacturer data | 6 bytes = address octets reversed (`cd 4a 97 ef 32 fd`) |
+| Manufacturer data | 6 bytes = address octets reversed (`ab 89 67 45 23 c1`) |
 | Primary adv UUID (idle) | often only `0000fee7-…` |
 | Connectable adv | may list GAP, GATT, HID, `fee7`, `f002`, `f008` |
 
@@ -53,7 +53,7 @@ Timestamps relative to first ATT packet in the capture:
 4. **~880 ms** — several notifications on **0x000d**, including an
    `0xA1` status that embeds the device MAC:
    ```text
-   a1 00 00 06 03 53 01 31 06 00 00 01 cd 4a 97 ef 32 fd 00 01
+   a1 00 00 06 03 53 01 31 06 00 00 01 ab 89 67 45 23 c1 00 01
    ```
 
 Without step 3 the link does not stay useful; Linux attempts that only
@@ -232,9 +232,9 @@ a1 00 00 00 | year_be | mon day hour min sec | 01 01 04 00 00 00 00 00 00
 Device → host (notification), includes MAC:
 
 ```text
-a1 00 00 06 ... cd 4a 97 ef 32 fd ...
+a1 00 00 06 ... ab 89 67 45 23 c1 ...
                  ^^^^^^^^^^^^^^^^^^^
-                 MAC LE = FD:32:EF:97:4A:CD
+                 MAC LE = C1:23:45:67:89:AB
 ```
 
 This is what sets the watch clock on phone connect.

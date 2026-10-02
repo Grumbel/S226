@@ -16,7 +16,8 @@ public:
   explicit WatchBridge(QObject* parent = nullptr);
   ~WatchBridge() override;
 
-  void start(const QString& controller);
+  // address: only connect to this watch; empty for any S226.
+  void start(const QString& controller, const QString& address);
   void stop();
 
   void startBloodPressure();

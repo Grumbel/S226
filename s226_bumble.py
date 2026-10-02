@@ -287,11 +287,6 @@ def is_s226_adv(advertisement) -> bool:
         return True
     if 0xF8F8 in _adv_manufacturer_ids(data):
         return True
-    try:
-        if str(advertisement.address).upper().startswith("FD:32:EF:97:4A:CD"):
-            return True
-    except Exception:
-        pass
     return False
 
 

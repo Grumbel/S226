@@ -35,7 +35,7 @@ const char* toString(WatchState state);
 
 struct WatchOptions {
   std::string controller;    // USB controller selector, see findUsbController()
-  std::string address;       // optional watch address "FD:32:EF:97:4A:CD"
+  std::string address;       // only connect to this watch, e.g. "C1:23:45:67:89:AB"
   bool startHeartRate = true; // start measuring as soon as connected
   bool reconnect = true;      // scan again after the link drops
 };
