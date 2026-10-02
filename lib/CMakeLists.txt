@@ -4,6 +4,7 @@ find_package(Threads REQUIRED)
 
 add_library(s226ble STATIC
   src/protocol.cpp
+  src/step_rate.cpp
   src/usb.cpp
   src/usb_transport.cpp
   src/hci_host.cpp

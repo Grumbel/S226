@@ -7,6 +7,8 @@ qt_add_executable(s226-hr
   bpm_view.cpp
   metronome.cpp
   watch_bridge.cpp
+  measurement_log.cpp
+  trend_graph.cpp
 )
 target_link_libraries(s226-hr PRIVATE s226ble Qt6::Widgets Qt6::Multimedia)
 target_compile_definitions(s226-hr PRIVATE S226_VERSION="${S226_VERSION}")

@@ -16,8 +16,10 @@
 #include <QStatusBar>
 #include <QToolBar>
 #include <QToolButton>
+#include <QVBoxLayout>
 
 #include "bpm_view.hpp"
+#include "trend_graph.hpp"
 #include "s226/usb.hpp"
 
 namespace {
@@ -60,7 +62,15 @@ MainWindow::MainWindow(const QString& controllerOverride, QWidget* parent)
   });
 
   connect(&bridge_, &WatchBridge::steps, this, [this](quint32 steps) {
-    view_->setActivity(tr("%1 steps").arg(QLocale().toString(steps)));
+    steps_ = steps;
+    haveSteps_ = true;
+    stepRate_.add(s226::StepRate::Clock::now(), steps);
+    if (auto spm = stepRate_.stepsPerMinute()) {
+      const QDateTime now = QDateTime::currentDateTime();
+      graph_->addSample(TrendGraph::Spm, now.toMSecsSinceEpoch(), *spm);
+      log_.write(now, std::nullopt, qRound(*spm));
+    }
+    updateActivity();
   });
 
   connect(&metronome_, &Metronome::beat, view_, &BpmView::pulse);
@@ -71,6 +81,10 @@ MainWindow::MainWindow(const QString& controllerOverride, QWidget* parent)
 
   QSettings settings;
   restoreGeometry(settings.value("geometry").toByteArray());
+  const int graphIdx = graphWindowBox_->findData(settings.value("graphWindow", 300).toInt());
+  graphWindowBox_->setCurrentIndex(graphIdx >= 0 ? graphIdx : 1);
+  graph_->setWindowSeconds(graphWindowBox_->currentData().toInt());
+  loadHistory();
   restoreState(settings.value("windowState").toByteArray());
   metronomeBox_->setChecked(settings.value("metronome", false).toBool());
   volumeSlider_->setValue(settings.value("volume", 60).toInt());
@@ -81,8 +95,15 @@ MainWindow::MainWindow(const QString& controllerOverride, QWidget* parent)
 MainWindow::~MainWindow() = default;
 
 void MainWindow::buildUi() {
-  view_ = new BpmView(this);
-  setCentralWidget(view_);
+  auto* central = new QWidget(this);
+  auto* layout = new QVBoxLayout(central);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(0);
+  view_ = new BpmView(central);
+  graph_ = new TrendGraph(central);
+  layout->addWidget(view_, 3);
+  layout->addWidget(graph_, 1);
+  setCentralWidget(central);
 
   auto* bar = addToolBar(tr("Main"));
   bar->setObjectName("mainToolBar");
@@ -142,6 +163,19 @@ void MainWindow::buildUi() {
     }
   });
   bar->addWidget(bpButton_);
+
+  bar->addSeparator();
+  bar->addWidget(new QLabel(tr("Graph:"), bar));
+  graphWindowBox_ = new QComboBox(bar);
+  for (int minutes : {1, 5, 15, 30, 60, 120}) {
+    graphWindowBox_->addItem(minutes < 60 ? tr("%1 min").arg(minutes) : tr("%1 h").arg(minutes / 60),
+                             minutes * 60);
+  }
+  graphWindowBox_->setToolTip(tr("Time span shown in the graph"));
+  connect(graphWindowBox_, &QComboBox::currentIndexChanged, this, [this] {
+    graph_->setWindowSeconds(graphWindowBox_->currentData().toInt());
+  });
+  bar->addWidget(graphWindowBox_);
 
   auto* spacer = new QWidget(bar);
   spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -242,6 +276,8 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   controllerBox_->setEnabled(!active_);
   bpButton_->setEnabled(state == s226::WatchState::Connected);
   if (state != s226::WatchState::Connected) {
+    stepRate_.reset();
+    updateActivity();
     view_->setStale(true);
     metronome_.setBpm(0);
     if (bpRunning_) {
@@ -259,10 +295,35 @@ void MainWindow::onHeartRate(int bpm) {
     return;
   }
   sinceSample_.restart();
+  const QDateTime now = QDateTime::currentDateTime();
+  graph_->addSample(TrendGraph::Bpm, now.toMSecsSinceEpoch(), bpm);
+  log_.write(now, bpm, std::nullopt);
   view_->setBpm(bpm);
   view_->setStale(false);
   view_->setStatus({});
   metronome_.setBpm(bpm);
+}
+
+void MainWindow::loadHistory() {
+  const auto rows = log_.readSince(
+      QDateTime::currentDateTime().addSecs(-TrendGraph::kMaxWindowSeconds));
+  for (const auto& r : rows) {
+    if (r.bpm) graph_->addSample(TrendGraph::Bpm, r.msecs, *r.bpm);
+    if (r.spm) graph_->addSample(TrendGraph::Spm, r.msecs, *r.spm);
+  }
+  appendLog(tr("Logging readings to %1").arg(log_.directory()));
+}
+
+void MainWindow::updateActivity() {
+  if (!haveSteps_) {
+    view_->setActivity({});
+    return;
+  }
+  QString text = tr("%1 steps").arg(QLocale().toString(steps_));
+  if (auto spm = stepRate_.stepsPerMinute()) {
+    text += tr("  \u00B7  %1 spm").arg(qRound(*spm));
+  }
+  view_->setActivity(text);
 }
 
 void MainWindow::checkStale() {
@@ -292,6 +353,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   settings.setValue("windowState", saveState());
   settings.setValue("metronome", metronomeBox_->isChecked());
   settings.setValue("volume", volumeSlider_->value());
+  settings.setValue("graphWindow", graphWindowBox_->currentData().toInt());
   bridge_.stop();
   event->accept();
 }

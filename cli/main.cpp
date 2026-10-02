@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 
+#include "s226/step_rate.hpp"
 #include "s226/usb.hpp"
 #include "s226/watch.hpp"
 
@@ -124,11 +125,16 @@ int main(int argc, char** argv) {
     }
     std::fflush(stdout);
   };
-  ev.activity = [last = std::optional<uint32_t>()](
+  ev.activity = [last = std::optional<uint32_t>(), rate = s226::StepRate()](
                     const s226::protocol::ActivityTotals& a) mutable {
+    rate.add(s226::StepRate::Clock::now(), a.steps);
     if (last == a.steps) return;
     last = a.steps;
-    std::printf("[%s] steps today: %u\n", timestamp().c_str(), a.steps);
+    if (auto spm = rate.stepsPerMinute()) {
+      std::printf("[%s] steps today: %u (%.0f spm)\n", timestamp().c_str(), a.steps, *spm);
+    } else {
+      std::printf("[%s] steps today: %u\n", timestamp().c_str(), a.steps);
+    }
     std::fflush(stdout);
   };
   if (verbose) {

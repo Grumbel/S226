@@ -12,8 +12,13 @@ nix run .#s226-cli      # terminal heart rate (-v for protocol log, --bp for blo
 ```
 
 `s226-hr` shows the live heart rate as a big number that scales with the
-window, with today's step count below it (refreshed every
-3 s from the watch's own counter) (F11 / Esc for full screen, Ctrl+L for the log). Tick
+window, with today's step count and cadence below it. The cadence is measured
+between the moments the watch's step counter changes (polled every
+second), so it follows the watch's own update rate (F11 / Esc for full screen, Ctrl+L for the log). A graph below shows
+bpm and spm over the last 1 min to 2 h (pick the span in the toolbar;
+hover for exact values). Every reading is also appended to a CSV file per
+day, `~/.local/share/s226/s226-hr/s226-hr-YYYY-MM-DD.csv` (columns
+`time,bpm,spm`), and the graph is refilled from it on restart. Tick
 **Metronome** (or press M) to get a click on every beat; the heart icon
 pulses along either way. It connects on start (`--no-connect` to skip),
 reconnects when the watch drops out, and restarts the measurement each

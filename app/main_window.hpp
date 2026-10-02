@@ -4,10 +4,13 @@
 #include <QMainWindow>
 #include <QTimer>
 
+#include "measurement_log.hpp"
 #include "metronome.hpp"
+#include "s226/step_rate.hpp"
 #include "watch_bridge.hpp"
 
 class BpmView;
+class TrendGraph;
 class QCheckBox;
 class QComboBox;
 class QDockWidget;
@@ -36,6 +39,8 @@ private:
   void onStateChanged(s226::WatchState state, const QString& detail);
   void onHeartRate(int bpm);
   void checkStale();
+  void updateActivity();
+  void loadHistory();
   void appendLog(const QString& line);
   void toggleFullScreen();
 
@@ -43,6 +48,8 @@ private:
   Metronome metronome_;
 
   BpmView* view_ = nullptr;
+  TrendGraph* graph_ = nullptr;
+  QComboBox* graphWindowBox_ = nullptr;
   QComboBox* controllerBox_ = nullptr;
   QPushButton* connectButton_ = nullptr;
   QPushButton* bpButton_ = nullptr;
@@ -58,4 +65,8 @@ private:
   bool bpRunning_ = false;
   QElapsedTimer sinceSample_;
   QTimer staleTimer_;
+  s226::StepRate stepRate_;
+  quint32 steps_ = 0;
+  bool haveSteps_ = false;
+  MeasurementLog log_;
 };

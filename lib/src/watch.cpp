@@ -180,7 +180,9 @@ struct Watch::Impl {
     log("Connected to S226 " + addr);
 
     writeCommand(protocol::keepalive()); // also fetches today's step count
-    auto nextKeepalive = Clock::now() + 3s;
+    // H-Band polls every 3 s; polling every second times step-counter
+    // updates closely enough for StepRate.
+    auto nextKeepalive = Clock::now() + 1s;
     for (;;) {
       wake = false;
       host->waitUntil([this] { return wake || !connected; }, Clock::now() + 250ms);
@@ -188,7 +190,7 @@ struct Watch::Impl {
       const auto now = Clock::now();
       if (now >= nextKeepalive) {
         writeCommand(protocol::keepalive());
-        nextKeepalive = now + 3s;
+        nextKeepalive = now + 1s;
       }
       applyHeartRate(now);
     }

@@ -1,9 +1,11 @@
 // Decoder checks against frames from the H-Band capture (2026-08-25).
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 
 #include "s226/protocol.hpp"
+#include "s226/step_rate.hpp"
 
 using namespace s226::protocol;
 
@@ -46,6 +48,28 @@ int main() {
                                    0xE4, 0x12}));
   CHECK(act && act->steps == 7916 && act->distanceMeters == 7395 && act->calories == 4836);
   CHECK(!decodeActivity(frame({0xD0, 0x80})));
+
+  // Step rate: 1 s polls, watch bumps its counter by 10 every 5 s = 120 spm
+  {
+    using namespace std::chrono;
+    s226::StepRate rate;
+    const auto t0 = s226::StepRate::Clock::time_point{};
+    auto total = [](int sec) { return static_cast<uint32_t>(1000 + 10 * (sec / 5)); };
+    rate.add(t0, total(0));
+    for (int sec = 1; sec <= 7; ++sec) rate.add(t0 + seconds(sec), total(sec));
+    CHECK(!rate.stepsPerMinute()); // only one counter change so far
+    for (int sec = 8; sec <= 40; ++sec) rate.add(t0 + seconds(sec), total(sec));
+    CHECK(rate.stepsPerMinute() && *rate.stepsPerMinute() > 119.9 &&
+          *rate.stepsPerMinute() < 120.1);
+    // Counter stops: 0 once it has been quiet for 2.5 update intervals.
+    for (int sec = 41; sec <= 47; ++sec) rate.add(t0 + seconds(sec), total(40));
+    CHECK(rate.stepsPerMinute() && *rate.stepsPerMinute() > 100);
+    for (int sec = 48; sec <= 55; ++sec) rate.add(t0 + seconds(sec), total(40));
+    CHECK(rate.stepsPerMinute() && *rate.stepsPerMinute() == 0.0);
+    // Counter reset (midnight) starts over.
+    rate.add(t0 + 60s, 3);
+    CHECK(!rate.stepsPerMinute());
+  }
 
   // Bind packet: capture sent 2026-08-25 17:50:43
   std::tm t{};

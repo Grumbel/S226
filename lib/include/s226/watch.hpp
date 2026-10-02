@@ -44,7 +44,7 @@ struct WatchEvents {
   std::function<void(WatchState, const std::string& detail)> stateChanged;
   std::function<void(const protocol::HeartRateSample&)> heartRate;
   std::function<void(const protocol::BloodPressureSample&)> bloodPressure;
-  // Today's steps / distance / calories, refreshed every few seconds.
+  // Today's steps / distance / calories, polled every second.
   std::function<void(const protocol::ActivityTotals&)> activity;
   std::function<void(const std::string&)> log;
   // Every notification from the watch, for debugging.
