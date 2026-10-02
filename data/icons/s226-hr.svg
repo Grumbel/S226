@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="body" x1="0" y1="14" x2="0" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f66151"/>
+      <stop offset="1" stop-color="#c01c28"/>
+    </linearGradient>
+    <path id="heart" d="M64 110C40 92 10 72 10 44 10 26 24 14 40 14c11 0 19 6 24 15 5-9 13-15 24-15 16 0 30 12 30 30 0 28-30 48-54 66z"/>
+    <clipPath id="clip">
+      <use href="#heart"/>
+    </clipPath>
+  </defs>
+  <!-- depth -->
+  <use href="#heart" transform="translate(0 5)" fill="#a51d2d"/>
+  <use href="#heart" fill="url(#body)"/>
+  <!-- soft highlight -->
+  <ellipse cx="40" cy="36" rx="20" ry="13" fill="#fff" opacity="0.22" transform="rotate(-28 40 36)" clip-path="url(#clip)"/>
+  <!-- ECG trace -->
+  <polyline clip-path="url(#clip)" points="4,64 38,64 46,50 56,84 68,32 77,64 124,64"
+            fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,79 @@
+.TH S226-CLI 1 2026-10-02 "s226" "User Commands"
+.SH NAME
+s226-cli \- list Bluetooth controllers and print S226 watch readings
+.SH SYNOPSIS
+.B s226-cli
+.B \-\-list
+.br
+.B s226-cli
+.RB [ \-c
+.IR selector ]
+.RB [ \-a
+.IR address ]
+.RB [ \-\-bp ]
+.RB [ \-t
+.IR seconds ]
+.RB [ \-v ]
+.SH DESCRIPTION
+.B s226-cli
+is the terminal counterpart of
+.BR s226-hr (1).
+It connects to an S226 fitness watch through a USB Bluetooth controller
+over raw HCI and prints the heart rate as the watch measures it.
+It also prints today's step count, with the cadence in steps per minute
+once it is known, whenever the count changes.
+Press Ctrl+C to stop the measurement and disconnect.
+.PP
+With
+.B \-\-list
+it prints the USB Bluetooth controllers that can be used and the
+selectors that pick each of them.
+.SH OPTIONS
+.TP
+.BR \-l ", " \-\-list
+List USB Bluetooth controllers and exit.
+.TP
+.BR \-c ", " \-\-controller " " \fIselector\fR
+Use this controller; default
+.BR auto .
+The selector syntax is described in
+.BR s226-hr (1).
+.TP
+.BR \-a ", " \-\-address " " \fIaddress\fR
+Only connect to the watch with this Bluetooth address, e.g.\&
+.BR FD:32:EF:97:4A:CD .
+By default the first device advertising as S226 is used.
+.TP
+.B \-\-bp
+Measure blood pressure instead of heart rate.
+Progress and the result in mmHg are printed.
+.TP
+.BR \-t ", " \-\-duration " " \fIseconds\fR
+Stop after this many seconds.
+.TP
+.BR \-v ", " \-\-verbose
+Also print the connection log and every raw notification from the
+watch in hexadecimal.
+.TP
+.BR \-V ", " \-\-version
+Show the version and exit.
+.TP
+.BR \-h ", " \-\-help
+Show a summary of the options and exit.
+.SH EXIT STATUS
+0 on success, 1 if the controller could not be opened or another error
+stopped the session, 2 on invalid options.
+.SH EXAMPLES
+.EX
+$ s226-cli \-\-list
+0: Realtek 802.11ac NIC [0bda:b82c] port 1-10.1 (hci0)
+     \-\-controller 0bda:b82c  (or 1-10.1, 0)  node /dev/bus/usb/001/012  driver btusb
+
+$ s226-cli \-c 0bda:b82c
+[10:15:02] Scanning: Wake the watch (press its button) to make it advertise
+[10:15:05] Connected: FD:32:EF:97:4A:CD
+[10:15:05] steps today: 7916
+[10:15:08] heart rate: 72 bpm
+.EE
+.SH SEE ALSO
+.BR s226-hr (1)

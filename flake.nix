@@ -129,6 +129,8 @@
                 ./cli
                 ./app
                 ./udev
+                ./data
+                ./man
               ];
             };
 
@@ -136,11 +138,18 @@
               pkgs.cmake
               pkgs.pkg-config
               pkgs.qt6.wrapQtAppsHook
+              pkgs.librsvg # rsvg-convert renders the PNG icon sizes
+            ];
+            nativeCheckInputs = [
+              pkgs.desktop-file-utils
+              pkgs.appstream
+              pkgs.mandoc
             ];
             buildInputs = [
               pkgs.libusb1
               pkgs.qt6.qtbase
               pkgs.qt6.qtmultimedia
+              pkgs.qt6.qtsvg # SVG window icon
             ];
             cmakeFlags = [ "-DS226_VERSION=${version}" ];
             # Qt Multimedia dlopen()s PipeWire for audio output.

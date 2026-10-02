@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=S226 Heart Rate
+GenericName=Heart Rate Monitor
+Comment=Live heart rate and step cadence from the S226 fitness watch
+Exec=s226-hr
+TryExec=s226-hr
+Icon=s226-hr
+Terminal=false
+Categories=Utility;
+Keywords=heart;rate;pulse;bpm;cadence;steps;metronome;watch;fitness;bluetooth;
+StartupNotify=true
+StartupWMClass=s226-hr
+SingleMainWindow=true
+Actions=fullscreen;no-connect;
+
+[Desktop Action fullscreen]
+Name=Start in Full Screen
+Exec=s226-hr --fullscreen
+
+[Desktop Action no-connect]
+Name=Start Without Connecting
+Exec=s226-hr --no-connect

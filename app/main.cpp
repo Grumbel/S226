@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
 #include <QLoggingCategory>
 #include <QTimer>
 
@@ -20,6 +21,10 @@ int main(int argc, char** argv) {
   QApplication::setApplicationName("s226-hr");
   QApplication::setApplicationDisplayName("S226 Heart Rate");
   QApplication::setApplicationVersion(S226_VERSION);
+  // Matches the .desktop file: Wayland app ID, taskbar icon and grouping.
+  QGuiApplication::setDesktopFileName(QStringLiteral("s226-hr"));
+  QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("s226-hr"),
+                                               QIcon(QStringLiteral(":/s226-hr.svg"))));
 
   QCommandLineParser parser;
   parser.setApplicationDescription("Live heart-rate display for the S226 watch");

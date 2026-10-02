@@ -1,0 +1,179 @@
+.TH S226-HR 1 2026-10-02 "s226" "User Commands"
+.SH NAME
+s226-hr \- live heart-rate display for the S226 fitness watch
+.SH SYNOPSIS
+.B s226-hr
+.RB [ \-c
+.IR selector ]
+.RB [ \-\-no\-connect ]
+.RB [ \-f ]
+.RI [ "Qt options" ]
+.SH DESCRIPTION
+.B s226-hr
+connects to an S226 (H-Band / Veepoo) fitness watch over Bluetooth Low
+Energy and shows the heart rate the watch measures as a large number
+that scales with the window.
+Below it are today's step count and the walking cadence in steps per
+minute (spm), and a graph of heart rate and cadence over a selectable
+time span.
+.PP
+The watch ends a heart-rate measurement on its own after 30 to 50
+seconds; the program restarts it automatically.
+When the watch goes out of range it keeps scanning and reconnects.
+To make the watch connectable, wake it by pressing its button.
+.PP
+The cadence is measured between the moments the watch's step counter
+changes, so it follows the watch's own update rate.
+It reads 0 once the counter stops changing.
+.PP
+Optionally a metronome clicks along with the heart rate.
+A blood-pressure measurement can be started from the toolbar.
+.PP
+The program does not use BlueZ.
+It drives a USB Bluetooth controller directly over raw HCI and detaches
+the kernel's
+.B btusb
+driver from that controller while it runs, so the corresponding
+.B hciN
+adapter disappears until the program exits.
+On combined WiFi/Bluetooth chips only the Bluetooth interface is
+detached; WiFi keeps working.
+.B bluetoothd
+does not need to be stopped.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-controller " " \fIselector\fR
+Use this USB Bluetooth controller.
+See
+.B CONTROLLER SELECTION
+below.
+Without this option the controller chosen in the toolbar last time is
+used, or the first available one.
+.TP
+.B \-\-no\-connect
+Do not connect automatically on start.
+.TP
+.BR \-f ", " \-\-fullscreen
+Start in full-screen mode.
+.TP
+.BR \-h ", " \-\-help
+Show a summary of the options and exit.
+.TP
+.BR \-v ", " \-\-version
+Show the version and exit.
+.PP
+The standard Qt options, such as
+.BI \-platform " name"
+and
+.BI \-style " name",
+are also accepted.
+.SH CONTROLLER SELECTION
+A controller
+.I selector
+is one of:
+.TP
+.B auto
+The first controller the user may open (default).
+.TP
+.I N
+The
+.IR N th
+controller as listed by
+.BR "s226-cli \-\-list" ,
+counting from 0.
+.TP
+.IB vvvv : pppp
+USB vendor and product ID in hexadecimal, e.g.\&
+.BR 0bda:b82c .
+A
+.B usb:
+prefix, as used by Bumble, is accepted.
+.TP
+.I bus\-port.port
+USB port path as in
+.IR /sys/bus/usb/devices ,
+e.g.\&
+.BR 1\-10.1 .
+This stays the same when the dongle is replugged into the same port.
+.TP
+.IB bus / device
+Bus and device number as printed by
+.BR lsusb (8),
+e.g.\&
+.BR 001/012 .
+.TP
+.BI hci N
+The kernel adapter currently backed by that controller.
+.PP
+Controllers are recognised by their Bluetooth HCI USB interface
+(class e0, subclass 01, protocol 01), not by their name.
+.SH KEYS
+.TP
+.B F11
+Toggle full screen.
+.TP
+.B Esc
+Leave full screen.
+.TP
+.B M
+Toggle the metronome.
+.TP
+.B Ctrl+L
+Show or hide the log panel.
+.TP
+.B Ctrl+Q
+Quit.
+.SH FILES
+.TP
+.I ~/.local/share/s226/s226\-hr/s226\-hr\-YYYY\-MM\-DD.csv
+One file per day with every reading, columns
+.BR time , " bpm" " and " spm .
+Each row holds one reading; the other column is empty.
+The graph is refilled from the last two hours of these files on start.
+.TP
+.I ~/.config/s226/s226\-hr.conf
+Settings: selected controller, metronome, volume, graph time span and
+window geometry.
+.TP
+.I /usr/lib/udev/rules.d/70\-s226\-bluetooth.rules
+udev rule that gives the logged-in user access to USB Bluetooth
+controllers (the installation prefix may differ).
+.SH ENVIRONMENT
+.TP
+.B XDG_DATA_HOME
+Base directory of the log files (default
+.IR ~/.local/share ).
+.TP
+.B XDG_CONFIG_HOME
+Base directory of the settings file (default
+.IR ~/.config ).
+.TP
+.BR QT_FFMPEG_DECODING_HW_DEVICE_TYPES ", " QT_FFMPEG_ENCODING_HW_DEVICE_TYPES
+Unless already set, the program sets both to an empty list so that Qt
+Multimedia, which is only used for the metronome click, does not probe
+for hardware video codecs.
+.SH NOTES
+The user needs read and write access to the controller's device node
+.IR /dev/bus/usb/BBB/DDD .
+Install the udev rule above, or on NixOS add the package to
+.BR services.udev.packages .
+.PP
+Realtek dongles need the patch firmware that the kernel loads when the
+dongle is plugged in.
+It survives the takeover by
+.BR s226-hr .
+If the log warns about unpatched firmware, replug the dongle.
+.PP
+The calorie and distance values the watch reports are its own
+estimates and are not shown.
+.SH EXIT STATUS
+0 on normal exit; non-zero if the command line could not be parsed.
+.SH SEE ALSO
+.BR s226-cli (1),
+.BR lsusb (8),
+.BR udev (7)
+.PP
+Source code and protocol notes:
+.UR https://github.com/Grumbel/S226
+GitHub
+.UE

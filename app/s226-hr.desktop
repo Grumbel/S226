@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=S226 Heart Rate
-Comment=Live heart rate from the S226 watch
-Exec=s226-hr
-Icon=emblem-favorite
-Categories=Utility;
-Terminal=false

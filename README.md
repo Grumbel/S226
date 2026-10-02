@@ -24,6 +24,17 @@ pulses along either way. It connects on start (`--no-connect` to skip),
 reconnects when the watch drops out, and restarts the measurement each
 time the watch ends one by itself (after ~30-50 s).
 
+### Installing
+
+The package installs the desktop integration under the app ID
+`s226-hr` (the binary name, not a reverse-DNS ID): a `.desktop` launcher (with "Start in Full
+Screen" and "Start Without Connecting" actions), an SVG icon plus PNG
+sizes, AppStream metadata, the `s226-hr(1)` and `s226-cli(1)` man pages
+and the udev rule. On NixOS, put the flake's package in
+`environment.systemPackages` (launcher, icon, man pages) and
+`services.udev.packages` (device access). With plain CMake:
+`cmake -B build -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build && sudo cmake --install build`.
+
 ### Picking the Bluetooth dongle
 
 The app drives a USB Bluetooth controller directly over raw HCI (like

@@ -19,6 +19,7 @@ add_subdirectory(lib)
 add_subdirectory(cli)
 if(S226_BUILD_GUI)
   add_subdirectory(app)
+  add_subdirectory(data)
 endif()
 
 install(FILES udev/70-s226-bluetooth.rules DESTINATION ${CMAKE_INSTALL_LIBDIR}/udev/rules.d)
