@@ -51,8 +51,8 @@ shows. Refresh / Apply.
 
 **Alarms** — list, add, edit and delete the alarms stored on the watch.
 
-**Notify** — send a text message (with type) or show an incoming-call
-screen.
+**Notify** — send a text message (with type), show an incoming-call
+screen, or push now-playing metadata; shows media keys from the watch.
 
 **History** — fetch the watch's 5-minute activity slots for today or a
 previous day.

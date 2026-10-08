@@ -160,6 +160,22 @@ Set the personal data the watch uses for distance and calories: height
 in cm, weight in kg, age, sex, daily step goal and sleep goal in minutes
 (default 480).
 .TP
+.BR \-\-music " " \fItitle\fR[\fB/\fIartist\fR[\fB/\fIalbum\fR]][\fB;playing=\fR0|1][\fB;vol=\fIN\fR]
+Push now-playing metadata to the watch so it can show the current track.
+Optional
+.B ;playing=0
+marks the track as paused;
+.B ;vol=\fIN\fR
+sets a volume level 0–100.
+While connected, media keys from the watch (next, play-pause, previous)
+are printed as
+.B music: next
+and similar.
+Enable the
+.B music
+feature on the watch if nothing appears
+.RB ( \-\-feature " music=on" ).
+.TP
 .BR \-\-send " " \fIhex\fR
 Send raw bytes to the watch, e.g.\&
 .BR "a0 00" ,
