@@ -1,6 +1,10 @@
 #include "main_window.hpp"
 
 #include <QAction>
+#include <QApplication>
+#include <QEvent>
+#include <QMenu>
+#include <QSystemTrayIcon>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -67,7 +71,9 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
   setWindowTitle(tr("S226 Heart Rate"));
   setMinimumSize(720, 520);
   buildUi();
+  buildTray();
   refreshControllers();
+  updateTray();
 
   connect(&bridge_, &WatchBridge::stateChanged, this, &MainWindow::onStateChanged);
   connect(&bridge_, &WatchBridge::heartRate, this, &MainWindow::onHeartRate);
@@ -280,7 +286,7 @@ void MainWindow::buildUi() {
   auto* m = new QShortcut(QKeySequence(Qt::Key_M), this);
   connect(m, &QShortcut::activated, metronomeBox_, &QCheckBox::toggle);
   auto* quit = new QShortcut(QKeySequence::Quit, this);
-  connect(quit, &QShortcut::activated, this, &QWidget::close);
+  connect(quit, &QShortcut::activated, this, &MainWindow::quitApp);
 
   stateLabel_ = new QLabel(this);
   statusBar()->addWidget(stateLabel_, 1);
@@ -380,6 +386,8 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   const bool connected = (state == s226::WatchState::Connected);
   setTabsEnabled(connected);
   bpButton_->setEnabled(connected);
+  if (!connected) lastBpm_ = 0;
+  updateTray();
   if (connected && !detail.isEmpty()) rememberWatch(detail);
   if (connected) {
     // Auto-load the visible feature tab once connected.
@@ -407,6 +415,7 @@ void MainWindow::onHeartRate(int bpm) {
     view_->setStatus(tr("Measuring..."));
     return;
   }
+  lastBpm_ = bpm;
   sinceSample_.restart();
   const QDateTime now = QDateTime::currentDateTime();
   graph_->addSample(TrendGraph::Bpm, now.toMSecsSinceEpoch(), bpm);
@@ -415,6 +424,7 @@ void MainWindow::onHeartRate(int bpm) {
   view_->setStale(false);
   view_->setStatus({});
   metronome_.setBpm(bpm);
+  updateTray();
 }
 
 void MainWindow::loadHistory() {
@@ -457,6 +467,18 @@ void MainWindow::toggleFullScreen() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+  if (!quitting_ && tray_ && tray_->isVisible()) {
+    // Keep running in the tray; save geometry but leave the session up.
+    QSettings settings;
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState(kWindowStateVersion));
+    settings.setValue("metronome", metronomeBox_->isChecked());
+    settings.setValue("volume", volumeSlider_->value());
+    settings.setValue("graphWindow", graphWindowBox_->currentData().toInt());
+    hide();
+    event->ignore();
+    return;
+  }
   QSettings settings;
   settings.setValue("geometry", saveGeometry());
   settings.setValue("windowState", saveState(kWindowStateVersion));
@@ -464,5 +486,76 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   settings.setValue("volume", volumeSlider_->value());
   settings.setValue("graphWindow", graphWindowBox_->currentData().toInt());
   bridge_.stop();
+  if (tray_) tray_->hide();
   event->accept();
+}
+
+void MainWindow::changeEvent(QEvent* event) {
+  QMainWindow::changeEvent(event);
+  if (event->type() == QEvent::WindowStateChange && tray_ && tray_->isVisible()) {
+    // Optional: could hide on minimize; keep window in taskbar for now.
+  }
+}
+
+void MainWindow::buildTray() {
+  if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+    appendLog(tr("No system tray available; the window will quit on close."));
+    return;
+  }
+
+  trayMenu_ = new QMenu(this);
+  trayShowAction_ = trayMenu_->addAction(tr("Show window"));
+  connect(trayShowAction_, &QAction::triggered, this, &MainWindow::showFromTray);
+  trayConnectAction_ = trayMenu_->addAction(tr("Connect"));
+  connect(trayConnectAction_, &QAction::triggered, this, [this] {
+    if (active_) disconnectWatch();
+    else connectWatch();
+  });
+  trayMenu_->addSeparator();
+  trayQuitAction_ = trayMenu_->addAction(tr("Quit"));
+  connect(trayQuitAction_, &QAction::triggered, this, &MainWindow::quitApp);
+
+  tray_ = new QSystemTrayIcon(this);
+  tray_->setIcon(windowIcon().isNull()
+                     ? QIcon::fromTheme(QStringLiteral("s226-hr"), QIcon(QStringLiteral(":/s226-hr.svg")))
+                     : windowIcon());
+  tray_->setContextMenu(trayMenu_);
+  tray_->setToolTip(tr("S226 Heart Rate"));
+  connect(tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
+    if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick)
+      showFromTray();
+  });
+  tray_->show();
+}
+
+void MainWindow::updateTray() {
+  if (!tray_) return;
+  if (trayConnectAction_) {
+    trayConnectAction_->setText(active_ ? tr("Disconnect") : tr("Connect"));
+  }
+  QString tip = tr("S226 Heart Rate");
+  if (state_ == s226::WatchState::Connected) {
+    if (lastBpm_ > 0)
+      tip = tr("S226 — %1 bpm").arg(lastBpm_);
+    else
+      tip = tr("S226 — connected");
+  } else if (active_) {
+    tip = tr("S226 — %1").arg(stateText(state_, {}));
+  } else {
+    tip = tr("S226 — disconnected");
+  }
+  tray_->setToolTip(tip);
+}
+
+void MainWindow::showFromTray() {
+  showNormal();
+  raise();
+  activateWindow();
+}
+
+void MainWindow::quitApp() {
+  quitting_ = true;
+  bridge_.stop();
+  if (tray_) tray_->hide();
+  QApplication::quit();
 }

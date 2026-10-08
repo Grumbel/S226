@@ -11,13 +11,16 @@
 
 class BpmView;
 class TrendGraph;
+class QAction;
 class QCheckBox;
 class QComboBox;
 class QDockWidget;
 class QLabel;
+class QMenu;
 class QPlainTextEdit;
 class QPushButton;
 class QSlider;
+class QSystemTrayIcon;
 class QTabWidget;
 class SettingsTab;
 class AlarmsTab;
@@ -38,9 +41,11 @@ public:
 
 protected:
   void closeEvent(QCloseEvent* event) override;
+  void changeEvent(QEvent* event) override;
 
 private:
   void buildUi();
+  void buildTray();
   void refreshControllers();
   QString selectedController() const;
   QString selectedWatch() const;
@@ -53,6 +58,9 @@ private:
   void appendLog(const QString& line);
   void toggleFullScreen();
   void setTabsEnabled(bool connected);
+  void updateTray();
+  void showFromTray();
+  void quitApp();
 
   WatchBridge bridge_;
   Metronome metronome_;
@@ -77,6 +85,14 @@ private:
   NotifyTab* notifyTab_ = nullptr;
   HistoryTab* historyTab_ = nullptr;
   WorkoutsTab* workoutsTab_ = nullptr;
+
+  QSystemTrayIcon* tray_ = nullptr;
+  QMenu* trayMenu_ = nullptr;
+  QAction* trayShowAction_ = nullptr;
+  QAction* trayConnectAction_ = nullptr;
+  QAction* trayQuitAction_ = nullptr;
+  bool quitting_ = false;
+  int lastBpm_ = 0;
 
   QString controllerOverride_;
   s226::WatchState state_ = s226::WatchState::Stopped;
