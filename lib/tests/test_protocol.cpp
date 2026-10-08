@@ -139,6 +139,18 @@ int main() {
   CHECK(swWrite.size() == 20 && swWrite[0] == 0xad && swWrite[1] == 0x01 && swWrite[2] == 0x01 &&
         swWrite[3] == 0x01 && swWrite[19] == 0x01);
 
+  // 0xB8 features as pushed after the bind
+  auto feat = decodeWatchFeatures(Bytes{0xb8, 0x02, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x02, 0x01,
+                                        0x00, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00});
+  CHECK(feat && (*feat)[kWatchFeatures[0]] == WatchFeatures::On &&
+        (*feat)[kWatchFeatures[7]] == WatchFeatures::On &&       // stopwatch
+        (*feat)[kWatchFeatures[6]] == WatchFeatures::Off &&      // find-phone
+        (*feat)[kWatchFeatures[14]] == WatchFeatures::Unsupported); // music
+  (*feat)[kWatchFeatures[7]] = WatchFeatures::Off;
+  auto featWrite = watchFeaturesWrite(*feat);
+  CHECK(featWrite.size() == 20 && featWrite[1] == 0x01 && featWrite[9] == 0x02 &&
+        featWrite[2] == 0x01 && featWrite[19] == 0x00);
+
   CHECK(historyRead(1) == Bytes({0xd1, 0x01, 0x00, 0x01}));
   auto slot = decodeHistorySlot(Bytes{0xd1, 0x0d, 0x00, 0x20, 0x01, 0x21, 0x00, 0x00, 0x00, 0x00,
                                       0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x49, 0x01, 0x05});

@@ -237,6 +237,28 @@ bool isPersonInfoAck(std::span<const uint8_t> v) {
   return v.size() >= 2 && v[0] == 0xA3 && v[1] == 0x01;
 }
 
+Bytes watchFeaturesRead() {
+  Bytes b(20, 0);
+  b[0] = 0xB8;
+  b[1] = 0x02;
+  return b;
+}
+
+Bytes watchFeaturesWrite(const WatchFeatures& f) {
+  Bytes b(f.raw.begin(), f.raw.end());
+  b[0] = 0xB8;
+  b[1] = 0x01;
+  b[19] = 0x00; // package 1
+  return b;
+}
+
+std::optional<WatchFeatures> decodeWatchFeatures(std::span<const uint8_t> v) {
+  WatchFeatures f;
+  if (v.size() < f.raw.size() || v[0] != 0xB8 || v[19] != 0) return std::nullopt;
+  std::copy_n(v.begin(), f.raw.size(), f.raw.begin());
+  return f;
+}
+
 Bytes historyRead(int daysAgo, int firstSlot) {
   return {0xD1, static_cast<uint8_t>(firstSlot), static_cast<uint8_t>(firstSlot >> 8),
           u8(daysAgo)};

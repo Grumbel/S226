@@ -246,6 +246,50 @@ void printScreenOnTime(const proto::ScreenOnTime& t) {
   std::printf("Screen on:     %d s (%d-%d s)\n", t.seconds, t.minSeconds, t.maxSeconds);
 }
 
+void printFeatures(const proto::WatchFeatures& f) {
+  std::string on, off;
+  for (const auto& feature : proto::kWatchFeatures) {
+    if (f[feature] == proto::WatchFeatures::Unsupported) continue;
+    std::string& list = f[feature] == proto::WatchFeatures::On ? on : off;
+    if (!list.empty()) list += ", ";
+    list += feature.name;
+  }
+  std::printf("Features on:   %s\n", on.empty() ? "none" : on.c_str());
+  std::printf("Features off:  %s\n", off.empty() ? "none" : off.c_str());
+}
+
+// NAME=on|off
+std::optional<std::pair<proto::WatchFeature, bool>> parseFeature(const std::string& s) {
+  const size_t eq = s.find('=');
+  if (eq == std::string::npos) return std::nullopt;
+  const std::string name = s.substr(0, eq), value = s.substr(eq + 1);
+  if (value != "on" && value != "off") return std::nullopt;
+  for (const auto& f : proto::kWatchFeatures) {
+    if (f.name == name) return std::pair{f, value == "on"};
+  }
+  return std::nullopt;
+}
+
+Action setFeature(proto::WatchFeature feature, bool on) {
+  return [feature, on](Session& s) {
+    auto current =
+        s.query<proto::WatchFeatures>(proto::watchFeaturesRead(), proto::decodeWatchFeatures);
+    if (!current) return fail("the feature query");
+    if ((*current)[feature] == proto::WatchFeatures::Unsupported) {
+      std::fprintf(stderr, "The watch does not support %s\n",
+                   std::string(feature.name).c_str());
+      return false;
+    }
+    proto::WatchFeatures f = *current;
+    f[feature] = on ? proto::WatchFeatures::On : proto::WatchFeatures::Off;
+    auto result =
+        s.query<proto::WatchFeatures>(proto::watchFeaturesWrite(f), proto::decodeWatchFeatures);
+    if (!result) return fail("the feature setting");
+    printFeatures(*result);
+    return (*result)[feature] == f[feature];
+  };
+}
+
 void printMessageSwitches(const proto::MessageSwitches& m) {
   std::string on, off;
   for (size_t i = 0; i < m.state.size(); ++i) {
@@ -315,6 +359,10 @@ bool showSettings(Session& s) {
                                              proto::decodeMessageSwitches);
   if (!msg) return fail("the message switch query");
   printMessageSwitches(*msg);
+  auto feat =
+      s.query<proto::WatchFeatures>(proto::watchFeaturesRead(), proto::decodeWatchFeatures);
+  if (!feat) return fail("the feature query");
+  printFeatures(*feat);
   return true;
 }
 
@@ -578,6 +626,9 @@ void usage(const char* argv0) {
       "      --messages LIST     message types the watch shows, comma-separated:\n"
       "                          call, sms, whatsapp, gmail, other, ... (see --settings),\n"
       "                          or all, none\n"
+      "      --feature NAME=on|off\n"
+      "                          switch a watch feature (see --settings), e.g.\n"
+      "                          stopwatch=off, auto-hr=on, 24h=off (12-hour clock)\n"
       "      --sedentary on|off|HH:MM-HH:MM/MIN\n"
       "                          sedentary reminder, e.g. 08:00-18:00/60\n"
       "      --hr-alarm on|off|LOW-HIGH\n"
@@ -613,6 +664,7 @@ int main(int argc, char** argv) {
     OptMessages,
     OptNotifyType,
     OptCall,
+    OptFeature,
   };
   const option longopts[] = {{"list", no_argument, nullptr, 'l'},
                              {"controller", required_argument, nullptr, 'c'},
@@ -634,6 +686,7 @@ int main(int argc, char** argv) {
                              {"messages", required_argument, nullptr, OptMessages},
                              {"notify-type", required_argument, nullptr, OptNotifyType},
                              {"call", required_argument, nullptr, OptCall},
+                             {"feature", required_argument, nullptr, OptFeature},
                              {"send", required_argument, nullptr, OptSend},
                              {nullptr, 0, nullptr, 0}};
   auto bad = [&](const char* what, const char* arg) {
@@ -696,6 +749,12 @@ int main(int argc, char** argv) {
     }
     case OptNotify: actions.push_back(notify(optarg, notifyType)); break;
     case OptCall: actions.push_back(call(optarg)); break;
+    case OptFeature: {
+      auto f = parseFeature(optarg);
+      if (!f) return bad("feature setting", optarg);
+      actions.push_back(setFeature(f->first, f->second));
+      break;
+    }
     case OptNotifyType: {
       auto it = std::find(proto::kMessageTypeNames.begin(), proto::kMessageTypeNames.end(),
                           std::string_view(optarg));

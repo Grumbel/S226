@@ -61,6 +61,7 @@ s226-cli --person 175,60,34,m,9000      # height, weight, age, sex, step goal
 s226-cli --notify "Tea is ready"        # message on the watch
 s226-cli --messages call,sms,other --notify-type sms --notify "Hi"
 s226-cli --call "Alice"                 # incoming-call screen
+s226-cli --feature stopwatch=off        # watch features, see --settings
 s226-cli -v --send "a0 00"              # raw command, prints the replies
 ```
 
@@ -254,8 +255,7 @@ those UUIDs. They say nothing about who made the watch.
 
 ### Open questions
 
-- Meaning of the post-bind status dumps `0xA7`, `0xAD`, `0xB8`
+- Meaning of the post-bind `0xA7` dump (`0xAD` and `0xB8` are decoded)
 - `0xD1` history bytes 14-16 and 18; `0xD3` reply
-- How long messages stay on screen (~5 s, independent of `b4`)
 - Role of the `fee7` and HID services
-- Settings commands (`b1` alarms, `c7` menu flags, …) in detail
+- Settings not implemented yet: `b1` brightness schedule, `b9` alarms, `b2` countdown, `c7` screen style

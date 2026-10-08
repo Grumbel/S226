@@ -77,7 +77,8 @@ Show a summary of the options and exit.
 Print the firmware version, the device number and the battery charge.
 .TP
 .BR \-s ", " \-\-settings
-Print the sedentary reminder, heart-rate alarm and screen-on time.
+Print the sedentary reminder, heart-rate alarm, screen-on time, which
+message types are shown, and which watch features are on.
 .TP
 .BR \-\-history [ =\fIday\fR ]
 Print the watch's activity log in 5-minute slots as CSV (columns
@@ -123,6 +124,24 @@ and switch off all others the watch supports.
 and
 .B sms
 are off on a watch that was never set up for them.
+.TP
+.BR \-\-feature " " \fIname\fB=on\fR|\fBoff\fR
+Switch a watch feature on or off.
+.B \-\-settings
+lists those the watch supports, e.g.\&
+.B stopwatch
+(the stopwatch menu),
+.B auto\-hr
+and
+.B auto\-bp
+(measure every 5 minutes),
+.B wear\-detect
+and
+.BR disconnect\-remind .
+.B metric=off
+switches to imperial units,
+.B 24h=off
+to a 12-hour clock.
 .TP
 .BR \-\-sedentary " " \fBon\fR | \fBoff\fR | \fIHH:MM\fB\-\fIHH:MM\fB/\fIminutes\fR
 Switch the sedentary reminder on or off, or set its time window and

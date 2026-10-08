@@ -278,10 +278,38 @@ values. "✓" means the capture agrees with the APK name.
 | `90 01 00` / `90 00 00` | BP | ✓ **Blood pressure** start / stop |
 
 Status dumps sent right after the bind: `0xA7` = device functions
-(feature bitmap), `0xAD` = supported message/notification types, `0xB8` =
-watch settings (12/24 h, metric, …). In these the values look like
-`1`/`2` = present (on / off) and `0` = not supported, but this is not
-verified.
+(feature bitmap), `0xAD` = message switches, `0xB8` = feature toggles.
+
+### Feature toggles (0xB8)
+
+Read `b8 02` + 18 zero bytes, write `b8 01 <states> … 00`; the watch
+echoes the stored table either way. One byte per feature: `0`
+unsupported, `1` on, `2` off. Tested: switching the stopwatch off and on
+removes and restores its menu entry.
+
+| Offset | Feature | S226 |
+|--------|---------|------|
+| 2 | units: on = metric, off = imperial | metric |
+| 3 | clock: on = 24 h, off = 12 h | 24 h |
+| 4 | heart rate every 5 min | on |
+| 5 | blood pressure every 5 min | on |
+| 6 | over-goal reminder | – |
+| 7 | voice BP / HR | – |
+| 8 | find-phone screen | off |
+| 9 | stopwatch menu | on |
+| 10 | low SpO₂ reminder | – |
+| 11 | wear detection | on |
+| 12 | automatic HRV | – |
+| 13 | automatic call handling | – |
+| 14 | disconnect reminder | off |
+| 16 | PPG | – |
+| 18 | music control | – |
+| 19 | package: 0 | |
+
+The APK has a second package (byte 19 = `01`: button lock at offset 2,
+message wakes screen at offset 3). The S226 answers a package-2 read
+with package 1, so it does not support it. There is no setting for how
+long a message stays on screen; the APK has none either.
 
 Other headers in the APK table that the S226 capture never exercised:
 `ae 01` find watch, `af` disconnect, `b6 01` camera shutter, `b5` find
@@ -423,7 +451,7 @@ sudo nix run .#s226-bumble -- --transport usb:0bda:b82c \
 
 * Meaning of the trailing status byte in 0xD0 / 0x90 frames
 * 0xD1 bytes 14-16 and 18; 0xD3 reply layout; workout header bytes 33-38
-* Message display time is fixed at ~5 s (independent of `b4`); no setting known
+* Message display time is fixed at ~5 s (independent of `b4`); the APK has no setting for it
 * Alarm (`b1`) and countdown exact layouts
 * Notification (ANCS-style) path — not in this capture
 * `f002` secondary channel role

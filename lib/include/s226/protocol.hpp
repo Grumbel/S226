@@ -184,6 +184,46 @@ struct PersonInfo {
 Bytes personInfoWrite(const PersonInfo& value);
 bool isPersonInfoAck(std::span<const uint8_t> value);
 
+// Feature toggles (0xB8 package 1): b8 <op> <state per feature> ... 00.
+// Each state is 0 unsupported, 1 on, 2 off. For "metric", off means
+// imperial units; for "24h", off means 12-hour clock. The second package
+// (byte 19 = 1: button lock, message wakes screen) is not supported by
+// the S226, which answers with package 1.
+struct WatchFeature {
+  std::string_view name;
+  size_t offset;
+};
+
+inline constexpr std::array<WatchFeature, 15> kWatchFeatures = {{
+    {"metric", 2},
+    {"24h", 3},
+    {"auto-hr", 4},           // heart rate every 5 minutes
+    {"auto-bp", 5},           // blood pressure every 5 minutes
+    {"goal-remind", 6},
+    {"voice", 7},
+    {"find-phone", 8},
+    {"stopwatch", 9},
+    {"spo2-remind", 10},
+    {"wear-detect", 11},
+    {"auto-hrv", 12},
+    {"auto-call", 13},
+    {"disconnect-remind", 14},
+    {"ppg", 16},
+    {"music", 18},
+}};
+
+struct WatchFeatures {
+  enum : uint8_t { Unsupported = 0, On = 1, Off = 2 };
+  std::array<uint8_t, 20> raw{};
+
+  uint8_t& operator[](const WatchFeature& f) { return raw[f.offset]; }
+  uint8_t operator[](const WatchFeature& f) const { return raw[f.offset]; }
+};
+
+Bytes watchFeaturesRead();                            // b8 02 00 ... (20 bytes)
+Bytes watchFeaturesWrite(const WatchFeatures& value); // b8 01 <states> ... 00
+std::optional<WatchFeatures> decodeWatchFeatures(std::span<const uint8_t> value);
+
 // ---- Stored data ------------------------------------------------------
 
 // Daily history in 5-minute slots. daysAgo 0 = today; the watch sends
