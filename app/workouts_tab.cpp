@@ -5,6 +5,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QTreeWidget>
+#include <QHeaderView>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
 #include <functional>
