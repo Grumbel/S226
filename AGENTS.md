@@ -6,8 +6,9 @@ Linux tools for the **S226 fitness watch** (H-Band / Veepoo), based on a
 reverse-engineered Bluetooth LE protocol. No phone and no H-Band app are
 needed.
 
-- **`s226-hr`**: Qt GUI for live heart rate, steps, cadence, graph, metronome.
-- **`s226-cli`**: Terminal tool for the same plus history, workouts, battery, settings, notifications, etc.
+- **`s226-hr`**: Qt GUI — tabbed UI for live HR, settings, alarms, notify,
+  history and workouts (same protocol surface as the CLI).
+- **`s226-cli`**: Terminal tool for the same features plus raw `--send`.
 - **`s226ble`**: C++20 library (libusb + minimal HCI/L2CAP/ATT host) used by both.
 - Python research tools (`s226.py` via BlueZ/Bleak, `s226_bumble.py` via Bumble raw HCI) and protocol notes.
 
@@ -31,21 +32,32 @@ License: keep existing (check headers; prefer GPLv3+ / REUSE / SPDX for new file
 | Path | Role |
 |------|------|
 | `lib/include/s226/protocol.hpp` | Pure packet builders / decoders |
-| `lib/include/s226/watch.hpp` | High-level Watch API (scan, connect, bind, HR/BP/steps…) |
+| `lib/include/s226/watch.hpp` | High-level Watch API (scan, connect, bind, HR/BP/steps, `send`) |
 | `lib/include/s226/usb.hpp` | USB BT controller discovery |
 | `lib/include/s226/step_rate.hpp` | Cadence from step counter |
 | `lib/src/` | HCI host, USB transport, protocol, watch, step_rate |
-| `app/` | Qt 6 GUI |
-| `cli/` | CLI |
+| `app/watch_bridge.*` | Qt adapter: signals + non-blocking `request` / `requestStream` |
+| `app/main_window.*` | Tab shell, connection toolbar, Live tab |
+| `app/settings_tab.*` | Settings form (Refresh / Apply) |
+| `app/alarms_tab.*` | Alarm list + weekday picker dialog |
+| `app/notify_tab.*` | Messages and incoming call |
+| `app/history_tab.*` | 5-minute activity slots |
+| `app/workouts_tab.*` | Sport-mode sessions |
+| `cli/` | CLI (`Session` + Actions; same protocol helpers) |
 | `data/`, `man/`, `udev/` | Desktop integration, man pages, udev rule |
 | `PROTOCOL.md`, `VeePoo_HBand_BLE_Protocol.md` | Reverse-engineering notes |
 | `s226.py`, `s226_bumble.py` | Research / probe tools |
 
-## Current tip (start of this work line)
+## GUI request pattern
 
-- Commit: `94f936334f107b7b22a219cbf89bd912c21c6c9e` (short `94f9363`)
-- Message: Add VeePoo_HBand_BLE_Protocol.md
-- Branch: master
-- Base for bundles: this commit (first checkout of the sequence)
+`Watch` exposes `send()` and `rawNotification`. Structured query/set is
+done in the GUI via `WatchBridge::request` / `requestStream` (accept
+predicate + timeout, results on the GUI thread). The CLI has its own
+`Session`/`Inbox` for the same idea. Prefer reusing `s226::protocol`
+builders/decoders; do not duplicate wire formats.
 
-Next bundle numbering starts at `s226-001.…` (or `projectname-001.…` — use `s226`).
+## Work-line base (this sequence)
+
+- Base commit: `94f9363` (Add VeePoo_HBand_BLE_Protocol.md)
+- Bundle naming: `s226-NNN.M-slug-94f9363.bundle`
+- Keep only the current tip bundle in artifacts.

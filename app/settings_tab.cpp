@@ -12,6 +12,7 @@
 #include <QTimeEdit>
 #include <QVBoxLayout>
 #include <functional>
+#include <algorithm>
 #include <memory>
 
 #include "watch_bridge.hpp"

@@ -3,19 +3,19 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- See latest bundle in artifacts (`s226-010…`).
+- Latest bundle: artifacts `s226-011…`
 
 ## Done in this sequence
 
-1. WatchBridge request / requestStream API
-2. Tabbed s226-hr GUI (Live, Settings, Alarms, Notify, History, Workouts)
-3. Man page + README + AppStream for the tabs
-4. Alarm add/edit dialog with weekday checkboxes (All / Clear; empty = once)
+1. WatchBridge `request` / `requestStream` / `send` / `connectedChanged`
+2. Tabbed s226-hr: Live, Settings, Alarms, Notify, History, Workouts
+3. Man page, README, AppStream for the tabs
+4. Alarm weekday checkboxes (All / Clear; empty days → one-shot)
+5. AGENTS.md architecture map updated; `#include <algorithm>` in settings_tab
 
-## Optional / user-side
+## User-side
 
-- Hardware smoke-test
-- Further UI polish as needed
+- Build and smoke-test on hardware (`nix run .#s226-hr`)
 
 ## Protocol gaps (unchanged)
 
