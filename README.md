@@ -4,11 +4,14 @@ Linux tools for the **S226 fitness watch** (H-Band / Veepoo), based on a
 reverse-engineered Bluetooth LE protocol. No phone and no H-Band app are
 needed.
 
-- **`s226-hr`**: Qt GUI showing the live heart rate, steps, cadence and a
-  graph, with an optional metronome.
-- **`s226-cli`**: the same in a terminal, plus controller listing, the
-  watch's activity history and workouts, battery, and its settings.
-- **`s226ble`**: the C++ library both are built on.
+- **`s226-hr`**: Qt GUI with tabs for live heart rate, settings, alarms,
+  notifications (including now-playing), activity history and workouts.
+  Optional metronome and system-tray support.
+- **`s226-cli`**: the same features in a terminal — heart rate or blood
+  pressure, settings, alarms, messages, music metadata, history,
+  workouts, and raw protocol access.
+- **`s226ble`**: the C++20 library both are built on (libusb + minimal
+  HCI/L2CAP/ATT host; no BlueZ).
 - Python research tools and the protocol notes in [PROTOCOL.md](PROTOCOL.md).
 
 ```bash
@@ -80,18 +83,25 @@ order after connecting, print to stdout, and exit:
 s226-cli --info --settings              # firmware, battery, settings
 s226-cli --history=1 > yesterday.csv    # 5-minute slots (steps, HR, ...)
 s226-cli --workouts                     # sport-mode sessions, per minute
+s226-cli --alarms                       # list alarms on the watch
+s226-cli --alarm 1=07:30/mon,tue,wed,thu,fri
 s226-cli --sedentary 08:00-18:00/60 --hr-alarm 50-115 --screen-time 10
 s226-cli --person 175,60,34,m,9000      # height, weight, age, sex, step goal
 s226-cli --notify "Tea is ready"        # message on the watch
 s226-cli --messages call,sms,other --notify-type sms --notify "Hi"
 s226-cli --call "Alice"                 # incoming-call screen
-s226-cli --feature stopwatch=off        # watch features, see --settings
+s226-cli --music "Title/Artist/Album"   # now-playing on the watch
+s226-cli --feature music=on             # enable music control if needed
+s226-cli --feature stopwatch=off        # other features: see --settings
 s226-cli -v --send "a0 00"              # raw command, prints the replies
-s226-cli --music "Title/Artist/Album"  # now-playing on the watch
 ```
 
-Distance and calories are left out of the GUI on purpose: the watch reports them,
-but they are its own estimates, not measurements.
+While connected without a command, media keys from the watch print as
+`music: next`, `music: play-pause` or `music: previous`.
+
+Distance and calories are left out of the Live graph on purpose: the
+watch reports them, but they are its own estimates, not measurements.
+History and workouts still show the values the watch stores.
 
 ## Installing
 
@@ -177,6 +187,9 @@ sets the watch clock) right away.
 | `d4 0N` | workout in slot N (1-3) | header frames, then one per minute |
 | `a0 00` | battery | `a0 00 <0x80\|percent> 00 <bars>` |
 | `e1`, `ac`, `b4`, `a3` | sedentary reminder, HR alarm, screen-on time, personal data | settings echo |
+| `b9` | alarms read / write / delete | alarm frames |
+| `99` | now-playing metadata (phone → watch) | (display on watch) |
+| `01 01 01 <n>` | media key (watch → phone): next / play-pause / previous | — |
 
 [PROTOCOL.md](PROTOCOL.md) has the full layouts, the captures they come
 from, and the remaining unknowns.
@@ -196,11 +209,11 @@ AppStream metadata and man pages.
 |------|------|
 | `lib/` | `s226ble` library, plain C++20 + libusb, no Qt |
 | `lib/include/s226/protocol.hpp` | S226 packet builders and decoders (pure functions) |
-| `lib/include/s226/watch.hpp` | `s226::Watch`: scan, connect, bind, heart rate / blood pressure / steps |
+| `lib/include/s226/watch.hpp` | `s226::Watch`: scan, connect, bind, measurements, `send`, events |
 | `lib/include/s226/usb.hpp` | USB Bluetooth controller discovery and selectors |
 | `lib/include/s226/step_rate.hpp` | cadence from the step counter |
 | `lib/src/` | private: libusb HCI transport, minimal LE host (HCI, L2CAP, ATT) |
-| `app/` | Qt 6 GUI (`s226-hr`) |
+| `app/` | Qt 6 GUI (`s226-hr`): tabs, WatchBridge, system tray |
 | `cli/` | `s226-cli` |
 | `data/`, `man/`, `udev/` | desktop integration, man pages, udev rule |
 
