@@ -241,23 +241,103 @@ This is what sets the watch clock on phone connect.
 
 ### Post-bind host writes (unique opcodes)
 
-| Write | Notes |
-|-------|--------|
-| `d8 00` | Poll / keepalive (very frequent) |
-| `a0 00` | Status query |
-| `f4 02 ...` | Early init |
-| `a3 ...` | Profile / session blob |
-| `e1 08 00 12 00 3c 02` | User profile-like fields |
-| `aa 02 00 00 01 01` | Feature flags |
-| `ac ...` | Settings |
-| `b1 ...` | Alarm / schedule (many time-bearing variants) |
-| `b2 ...` | Related config |
-| `c7 01 0N` | Menu enable bits |
-| `e0 00` / `e0 01` / `e0 02` | Mode select before measurements |
-| `d1 01 00 0N` | Read daily history for day N (0=today) |
-| `d0 01` / `d0 00` | **Heart rate** start / stop |
-| `90 01 00` / `90 00 00` | **Blood pressure** start / stop |
-| `d3` / `d4` | Stored measurement records (multi-frame) |
+Names come from the H-Band APK's command table (`BleProfile`, headers
+as signed Java bytes). The replies are from `btsnoop_hci.log.last`.
+Most setting commands share the same layout: `02` in the operation byte
+means read, the reply's byte 1 is `01` for OK, and it echoes the stored
+values. "✓" means the capture agrees with the APK name.
+
+| Write | APK name | Reply / decoding |
+|-------|----------|------------------|
+| `d8 00` | current sport | ✓ today's totals, see 0xD8 below (H-Band polls it every few s) |
+| `a0 00` | read battery | ✓ `a0 00 <0x80\|percent> 00 <level 0-4>`; `a0 00 cd 00 03` = 77 %, 3 bars (matches the watch) |
+| `a3 af 3c 22 01 23 28 01 e0` | person info | ✓ height 175 cm, weight 60 kg, age 34, gender 1, step goal u16 BE 9000, sleep goal u16 BE 480 min; reply `a3 01` |
+| `e1 08 00 12 00 3c 02` | long-seat (sedentary) | ✓ start 08:00, end 18:00, every 60 min, op `02`=read, `01` on, `00` off; reply `e1 01 sh sm eh em interval enabled op` (tested on the watch) |
+| `ac 00 00 02` | heart warning | ✓ read; write `ac high low on/off`; reply `ac high low enabled op 01`, e.g. `ac 73 34 01 02 01` = on, 52-115 bpm (tested) |
+| `aa 02 00 00 01 01` | (not in APK table) | reply `aa 01 02 08 00 16 00 01 05 05` |
+| `91 02 7a 4b` | BP model | ✓ private BP calibration 122/75, read; reply `91 01 7a 4b 01 02` |
+| `85 00 …` | women / menses | ✓ reply `85 01` |
+| `b1 02` | screen light (night dimming) | ✓ read; reply `b1 01 02 00 00 17 3b 01 01 02 0c`: 00:00-23:59, levels |
+| `b4 02` | screen-on time | ✓ read; write `b4 01 <sec>`; reply `b4 01 op sec min max 03`: 10 s (range 5-30 s). Out-of-range writes get no reply (tested) |
+| `b9 02 … fd 51` | multi-alarm | ✓ read with CRC in the last two bytes; reply `b9 01 00 01 02 …` (no alarms) |
+| `ef 01 fe` | battery manager | no reply |
+| `72 02 ff ff` | contacts | no reply |
+| `f4 02 02 00 01` | change watch language | ✓ reply `f4 01 01 01 02` |
+| `e0 00` / `e0 01` | sleep today / yesterday | ✓ empty replies (no sleep was recorded); the old reading as "mode select" was wrong |
+| `d1 <first u16 LE> <day>` | original data (5-min slots) | ✓ one frame per slot from `first` to the end of day `day` (0 = today; H-Band asked from 0xC0 = the last slot it had). Any other command except `d8`/`a0` aborts the transfer |
+| `d3 01` | sport-mode CRC | ✓ `d3 01 01 00 00 f3 9e …` |
+| `d4 <slot>` | sport-mode records | ✓ workout in slot 1-3, see below; an empty slot answers `d4 00 00 00 00 <slot>` |
+| `c7 01 0N` | read screen style | — |
+| `ae 01` | find watch | `ae 00 …` to every variant tried (`ae 01`, `ae 02`, `ae 01 01`, 20-byte padded); the S226 does not vibrate, so it is probably unsupported |
+| `c1 01 01 01` / `c1 01 06 00` / `c1 00 00 00` | SMS alert / incoming call / stop | ack `c1 xx 01`; showed nothing on the S226 (phone/SMS are switched off in `ad`) |
+| `c2 <type> <len> <total> <index> <flag> <14 bytes UTF-8>` | message text | ✓ no reply; type 17 ("other") with flag 2 (body) is displayed, multi-packet UTF-8 included. Packets ~120 ms apart |
+| `ad 02` | message switches | reply `ad 02` + one byte per message type (byte 2 + type): `01` on, `02` off, `00` unsupported; only type 17 is on here (inferred from what displayed) |
+| `d0 01` / `d0 00` | current heart rate | ✓ **Heart rate** start / stop |
+| `90 01 00` / `90 00 00` | BP | ✓ **Blood pressure** start / stop |
+
+Status dumps sent right after the bind: `0xA7` = device functions
+(feature bitmap), `0xAD` = supported message/notification types, `0xB8` =
+watch settings (12/24 h, metric, …). In these the values look like
+`1`/`2` = present (on / off) and `0` = not supported, but this is not
+verified.
+
+Other headers in the APK table that the S226 capture never exercised:
+`ae 01` find watch, `af` disconnect, `b6 01` camera shutter, `b5` find
+phone (watch → phone), `b2` countdown, `ab` alarm (old style), `c1`/`c2`
+message notification, `c8` weather, `d9` HRV, `80` SpO₂, `81` fatigue,
+`82` breathing, `e2` wear check, `93`/`96`/`97` ECG, `99` music.
+
+### Workouts (0xD4) — decoded
+
+`d4 <slot>` returns all frames of one workout recorded in the watch's
+sport mode:
+`d4 <index u16 LE> <count u16 LE> <slot> <14 payload bytes>`. Frames 1-3
+are the header; concatenating their payloads gives:
+
+| Offset | Content |
+|--------|---------|
+| 0 | `00` |
+| 1-7 | start: year u16 LE, month, day, hour, minute, second |
+| 8-14 | end, same layout |
+| 15-18 | steps, u32 LE |
+| 19-22 | distance (m), u32 LE |
+| 23-26 | calories (1/1000 kcal), u32 LE |
+| 27-30 | activity ("sport value"), u32 LE |
+| 31-32 | minutes, u16 LE (= count - 3) |
+| 33-41 | unknown (`01 10 0e`, a CRC-like u16 also seen in the `d3` reply, `00 00 ff ff`) |
+
+Then one frame per minute: `hr, activity u16 LE, steps u16 LE, calories
+u16 LE (1/1000 kcal), distance u16 LE, flag` (the flag at payload byte 9
+is occasionally `01`, maybe a pause). The header totals equal the
+per-minute sums exactly (2026-10-06 session: 6189 steps, 5673 m, 371041,
+activity 7156 over 177 minutes). The kcal ratio per step matches `d8`
+read as 0.1 kcal, which backs that unit too.
+
+### Bind reply (0xA1)
+
+```text
+a1 00 00 06 03 53 01 31 06 00 00 01 <MAC reversed> 00 01
+         ^^ ^^^^^ ^^^^^^^^
+     status  |    firmware 01.31.06
+             device number 0x0353 = 851 (H-Band shows "851 01.31.06")
+```
+
+According to the APK's reply handler, status is 0 check failed, 1 check
+OK, 2/3 set password failed/OK, 4/5 read failed/OK, 6 check OK and time
+set. Byte 11 is the wrist-turn function, 18 find-phone and 19 wear
+check (0 supported and off, 1 on, 2 not supported).
+
+The APK also describes sleep (`e0`) as multi-frame: `e0 <index, 0 =
+last> ? <day>` and 16 payload bytes per frame, split into fixed-size
+segments after reassembly. Not verified: this watch had no sleep stored.
+Its description of `d1` as a TLV stream does not match the S226, whose
+`d1` frames have the fixed layout above.
+
+The APK's description of the bind request matches the capture:
+`a1 <pwd u16 BE> <type> <year BE> mon day hour min sec <24h> 01`, with
+the default password `0000` sent as the number 0, type `0` = check password
+and set time (`1` = change password), and `is_24h = 1`. Byte 13 (`04`)
+is not covered by the APK description.
 
 ### Heart rate (0xD0) — decoded
 
@@ -340,7 +420,8 @@ sudo nix run .#s226-bumble -- --transport usb:0bda:b82c \
 ### Still open
 
 * Meaning of the trailing status byte in 0xD0 / 0x90 frames
-* 0xD1 bytes 12-16 and 18; calorie units; 0xD3/0xD4 records
+* 0xD1 bytes 14-16 and 18; 0xD3 reply layout; workout header bytes 33-38
+* How to write the `ad` switches (to enable call / SMS display)
 * Alarm (`b1`) and countdown exact layouts
 * Notification (ANCS-style) path — not in this capture
 * `f002` secondary channel role

@@ -6,7 +6,8 @@ needed.
 
 - **`s226-hr`**: Qt GUI showing the live heart rate, steps, cadence and a
   graph, with an optional metronome.
-- **`s226-cli`**: the same in a terminal, plus controller listing.
+- **`s226-cli`**: the same in a terminal, plus controller listing, the
+  watch's activity history and workouts, battery, and its settings.
 - **`s226ble`**: the C++ library both are built on.
 - Python research tools and the protocol notes in [PROTOCOL.md](PROTOCOL.md).
 
@@ -35,6 +36,8 @@ connect as soon as they see it.
 - **Metronome** that clicks on every beat; the heart icon pulses along
   either way.
 - **Blood pressure** measurement on demand.
+- The status bar shows the watch's **battery** (hover for the firmware
+  version).
 - Connects on start (`--no-connect` to skip) and reconnects when the
   watch drops out.
 - Connects to any S226 by default. To use one particular watch, pick or
@@ -44,7 +47,22 @@ connect as soon as they see it.
 Keys: **F11** / **Esc** full screen, **M** metronome, **Ctrl+L** log
 panel, **Ctrl+Q** quit. Details are in `man s226-hr`.
 
-Distance and calories are left out on purpose: the watch reports them,
+## s226-cli
+
+Without a command it prints the heart rate like `s226-hr`. Commands run in
+order after connecting, print to stdout, and exit:
+
+```bash
+s226-cli --info --settings              # firmware, battery, settings
+s226-cli --history=1 > yesterday.csv    # 5-minute slots (steps, HR, ...)
+s226-cli --workouts                     # sport-mode sessions, per minute
+s226-cli --sedentary 08:00-18:00/60 --hr-alarm 50-115 --screen-time 10
+s226-cli --person 175,60,34,m,9000      # height, weight, age, sex, step goal
+s226-cli --notify "Tea is ready"        # message on the watch
+s226-cli -v --send "a0 00"              # raw command, prints the replies
+```
+
+Distance and calories are left out of the GUI on purpose: the watch reports them,
 but they are its own estimates, not measurements.
 
 ## Installing
@@ -128,6 +146,9 @@ sets the watch clock) right away.
 | `90 01 00` / `90 00 00` | blood pressure start / stop | `90 00 00 <pct>` progress, `90 <sys> <dia> 64` result |
 | `d8 00` | poll today's totals | `d8 00 <steps> <distance> <calories>` (u32 LE) |
 | `d1 01 00 0N` | daily history of day N | one frame per 5-minute slot |
+| `d4 0N` | workout in slot N (1-3) | header frames, then one per minute |
+| `a0 00` | battery | `a0 00 <0x80\|percent> 00 <bars>` |
+| `e1`, `ac`, `b4`, `a3` | sedentary reminder, HR alarm, screen-on time, personal data | settings echo |
 
 [PROTOCOL.md](PROTOCOL.md) has the full layouts, the captures they come
 from, and the remaining unknowns.
@@ -232,6 +253,7 @@ those UUIDs. They say nothing about who made the watch.
 ### Open questions
 
 - Meaning of the post-bind status dumps `0xA7`, `0xAD`, `0xB8`
-- `0xD1` history bytes 12-16 and 18; calorie units; `0xD3`/`0xD4` records
+- `0xD1` history bytes 14-16 and 18; `0xD3` reply
+- Writing the `0xAD` message switches (call / SMS display)
 - Role of the `fee7` and HID services
 - Settings commands (`b1` alarms, `c7` menu flags, …) in detail

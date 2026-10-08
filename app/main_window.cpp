@@ -72,6 +72,15 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
     bpButton_->setText(tr("Blood pressure"));
   });
 
+  connect(&bridge_, &WatchBridge::deviceInfo, this, [this](int number, const QString& fw) {
+    appendLog(tr("Watch firmware %1, device number %2").arg(fw).arg(number));
+    batteryLabel_->setToolTip(tr("Firmware %1, device number %2").arg(fw).arg(number));
+  });
+  connect(&bridge_, &WatchBridge::battery, this, [this](int percent, int level) {
+    batteryLabel_->setText(percent >= 0 ? tr("Battery %1%").arg(percent)
+                                        : tr("Battery %1/4").arg(level));
+  });
+
   connect(&bridge_, &WatchBridge::steps, this, [this](quint32 steps) {
     steps_ = steps;
     haveSteps_ = true;
@@ -249,6 +258,8 @@ void MainWindow::buildUi() {
 
   stateLabel_ = new QLabel(this);
   statusBar()->addWidget(stateLabel_, 1);
+  batteryLabel_ = new QLabel(this);
+  statusBar()->addPermanentWidget(batteryLabel_);
 }
 
 void MainWindow::refreshControllers() {
@@ -341,6 +352,7 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   if (state == s226::WatchState::Connected) rememberWatch(detail);
   bpButton_->setEnabled(state == s226::WatchState::Connected);
   if (state != s226::WatchState::Connected) {
+    batteryLabel_->clear();
     stepRate_.reset();
     updateActivity();
     view_->setStale(true);

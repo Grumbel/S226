@@ -60,6 +60,7 @@ private:
   QCheckBox* metronomeBox_ = nullptr;
   QSlider* volumeSlider_ = nullptr;
   QLabel* stateLabel_ = nullptr;
+  QLabel* batteryLabel_ = nullptr;
   QDockWidget* logDock_ = nullptr;
   QPlainTextEdit* logView_ = nullptr;
 

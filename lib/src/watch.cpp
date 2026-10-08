@@ -187,6 +187,7 @@ struct Watch::Impl {
     // H-Band polls every 3 s; polling every second times step-counter
     // updates closely enough for StepRate.
     auto nextKeepalive = Clock::now() + 1s;
+    auto nextBattery = Clock::now() + 500ms;
     for (;;) {
       wake = false;
       host->waitUntil([this] { return wake || !connected; }, Clock::now() + 250ms);
@@ -195,6 +196,10 @@ struct Watch::Impl {
       if (now >= nextKeepalive) {
         writeCommand(protocol::keepalive());
         nextKeepalive = now + 1s;
+      }
+      if (now >= nextBattery) {
+        writeCommand(protocol::batteryRead());
+        nextBattery = now + 60s;
       }
       applyHeartRate(now);
     }
@@ -490,6 +495,13 @@ struct Watch::Impl {
       if (ev.activity) ev.activity(*act);
     } else if (auto bp = protocol::decodeBloodPressure(value)) {
       if (ev.bloodPressure) ev.bloodPressure(*bp);
+    } else if (auto info = protocol::decodeBindReply(value)) {
+      if (!info->bound) {
+        log("Warning: the watch rejected the bind (status " + std::to_string(info->status) + ")");
+      }
+      if (ev.deviceInfo) ev.deviceInfo(*info);
+    } else if (auto battery = protocol::decodeBattery(value)) {
+      if (ev.battery) ev.battery(*battery);
     }
   }
 };
@@ -543,6 +555,10 @@ void Watch::startBloodPressure() {
 
 void Watch::stopBloodPressure() {
   d_->post([this] { d_->writeCommand(protocol::bloodPressureStop()); });
+}
+
+void Watch::send(protocol::Bytes command) {
+  d_->post([this, c = std::move(command)] { d_->writeCommand(c); });
 }
 
 } // namespace s226

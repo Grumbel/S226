@@ -22,6 +22,14 @@ WatchBridge::WatchBridge(QObject* parent) : QObject(parent) {
   ev.activity = [this](const s226::protocol::ActivityTotals& a) {
     toGui([this, n = a.steps] { emit steps(n); });
   };
+  ev.deviceInfo = [this](const s226::protocol::DeviceInfo& i) {
+    toGui([this, n = i.deviceNumber, fw = QString::fromStdString(i.firmware)] {
+      emit deviceInfo(n, fw);
+    });
+  };
+  ev.battery = [this](const s226::protocol::Battery& b) {
+    toGui([this, b] { emit battery(b.percent, b.level); });
+  };
   ev.log = [this](const std::string& m) {
     toGui([this, m = QString::fromStdString(m)] { emit logMessage(m); });
   };

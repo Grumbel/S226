@@ -1,6 +1,6 @@
-.TH S226-CLI 1 2026-10-02 "s226" "User Commands"
+.TH S226-CLI 1 2026-10-08 "s226" "User Commands"
 .SH NAME
-s226-cli \- list Bluetooth controllers and print S226 watch readings
+s226-cli \- read, measure and configure an S226 watch from the terminal
 .SH SYNOPSIS
 .B s226-cli
 .B \-\-list
@@ -14,6 +14,11 @@ s226-cli \- list Bluetooth controllers and print S226 watch readings
 .RB [ \-t
 .IR seconds ]
 .RB [ \-v ]
+.br
+.B s226-cli
+.RI [ options ]
+.I command
+.RI [ command ...]
 .SH DESCRIPTION
 .B s226-cli
 is the terminal counterpart of
@@ -28,6 +33,12 @@ With
 .B \-\-list
 it prints the USB Bluetooth controllers that can be used and the
 selectors that pick each of them.
+.PP
+Given one or more of the commands below,
+.B s226-cli
+runs them in order once connected, prints their results on standard
+output, and exits.
+The connection log then goes to standard error.
 .SH OPTIONS
 .TP
 .BR \-l ", " \-\-list
@@ -60,9 +71,54 @@ Show the version and exit.
 .TP
 .BR \-h ", " \-\-help
 Show a summary of the options and exit.
+.SH COMMANDS
+.TP
+.BR \-i ", " \-\-info
+Print the firmware version, the device number and the battery charge.
+.TP
+.BR \-s ", " \-\-settings
+Print the sedentary reminder, heart-rate alarm and screen-on time.
+.TP
+.BR \-\-history [ =\fIday\fR ]
+Print the watch's activity log in 5-minute slots as CSV (columns
+.BR time,steps,distance_m,kcal,activity,heart_rate ).
+.I day
+is 0 for today (the default), 1 for yesterday, and so on.
+.TP
+.B \-\-workouts
+Print the workouts recorded in the watch's sport mode (up to three):
+a summary line with start, end and totals, then one CSV row per minute.
+.TP
+.BR \-\-notify " " \fItext\fR
+Show a message on the watch (UTF-8; sent as the "other apps" type, the
+only one switched on by default).
+.TP
+.BR \-\-sedentary " " \fBon\fR | \fBoff\fR | \fIHH:MM\fB\-\fIHH:MM\fB/\fIminutes\fR
+Switch the sedentary reminder on or off, or set its time window and
+interval, e.g.\&
+.BR 08:00\-18:00/60 .
+.TP
+.BR \-\-hr\-alarm " " \fBon\fR | \fBoff\fR | \fIlow\fB\-\fIhigh\fR
+Switch the heart-rate alarm on or off, or set its limits in bpm, e.g.\&
+.BR 50\-115 .
+.TP
+.BR \-\-screen\-time " " \fIseconds\fR
+Set how long the screen stays on (the S226 accepts 5 to 30 seconds).
+.TP
+.BR \-\-person " " \fIheight\fB,\fIweight\fB,\fIage\fB,\fBm\fR|\fBf\fB,\fIgoal\fR[ \fB,\fIsleep\fR ]
+Set the personal data the watch uses for distance and calories: height
+in cm, weight in kg, age, sex, daily step goal and sleep goal in minutes
+(default 480).
+.TP
+.BR \-\-send " " \fIhex\fR
+Send raw bytes to the watch, e.g.\&
+.BR "a0 00" ,
+and print every reply with the same first byte for 1.5 seconds.
+For protocol experiments.
 .SH EXIT STATUS
-0 on success, 1 if the controller could not be opened or another error
-stopped the session, 2 on invalid options.
+0 on success, 1 if the controller could not be opened, the watch did
+not answer a command or another error stopped the session, 2 on invalid
+options.
 .SH EXAMPLES
 .EX
 $ s226-cli \-\-list
@@ -74,6 +130,15 @@ $ s226-cli \-c 0bda:b82c
 [10:15:05] Connected: C1:23:45:67:89:AB
 [10:15:05] steps today: 7916
 [10:15:08] heart rate: 72 bpm
+
+$ s226-cli \-\-info \-\-settings 2>/dev/null
+Firmware:      01.31.06 (device number 851)
+Battery:       77% (3/4)
+Sedentary:     on, 08:00-18:00, every 60 min
+HR alarm:      on, below 52 or above 115 bpm
+Screen on:     10 s (5-30 s)
+
+$ s226-cli \-\-history=1 > yesterday.csv
 .EE
 .SH SEE ALSO
 .BR s226-hr (1)

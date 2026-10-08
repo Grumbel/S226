@@ -46,6 +46,10 @@ struct WatchEvents {
   std::function<void(const protocol::BloodPressureSample&)> bloodPressure;
   // Today's steps / distance / calories, polled every second.
   std::function<void(const protocol::ActivityTotals&)> activity;
+  // Device number and firmware, from the bind reply.
+  std::function<void(const protocol::DeviceInfo&)> deviceInfo;
+  // Read after connecting and once a minute.
+  std::function<void(const protocol::Battery&)> battery;
   std::function<void(const std::string&)> log;
   // Every notification from the watch, for debugging.
   std::function<void(const protocol::Bytes&)> rawNotification;
@@ -73,6 +77,11 @@ public:
   void stopHeartRate();
   void startBloodPressure();
   void stopBloodPressure();
+
+  // Sends a raw command to the watch's write characteristic. Replies
+  // arrive through WatchEvents::rawNotification. Ignored while not
+  // connected.
+  void send(protocol::Bytes command);
 
 private:
   struct Impl;

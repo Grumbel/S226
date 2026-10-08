@@ -10,6 +10,7 @@
 #include <ctime>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -65,5 +66,156 @@ struct ActivityTotals {
 
 // Reply to d8 00: d8 00 | steps u32le | distance u32le | calories u32le
 std::optional<ActivityTotals> decodeActivity(std::span<const uint8_t> value);
+
+// ---- Device information -------------------------------------------
+
+struct DeviceInfo {
+  int status = 0;         // 1 password OK, 6 password OK and time set; else failed
+  bool bound = false;     // status 1 or 6
+  int deviceNumber = 0;   // H-Band shows it before the version, e.g. 851
+  std::string firmware;   // e.g. "01.31.06"
+};
+
+// Reply to the bind: a1 00 00 <status> <number u16 BE> <version x3> ...
+std::optional<DeviceInfo> decodeBindReply(std::span<const uint8_t> value);
+
+Bytes batteryRead(); // a0 00
+
+struct Battery {
+  int percent = -1; // -1 if the watch only reports the level
+  int level = 0;    // 0..4 bars
+};
+
+// a0 00 <0x80 | percent> 00 <level>
+std::optional<Battery> decodeBattery(std::span<const uint8_t> value);
+
+// ---- Messages -------------------------------------------------------
+
+// Message source shown by the watch. Only types switched on in the
+// watch's 0xAD table are displayed; on the S226 that is Other by default.
+enum class MessageType : uint8_t {
+  Phone = 0,
+  WeChat = 2,
+  WhatsApp = 9,
+  Other = 17,
+};
+
+// c2 <type> <len> <total> <index> <flag 2 = body> <14 bytes UTF-8>, one
+// 20-byte packet per 14 bytes of text. H-Band sends them ~120 ms apart.
+std::vector<Bytes> messagePackets(std::string_view text, MessageType type = MessageType::Other);
+
+// ---- Settings ---------------------------------------------------------
+//
+// Settings commands share a layout: the operation byte is 02 to read and
+// 01 (or the on/off flag) to write, and the watch answers with the stored
+// values either way.
+
+struct SedentaryReminder {
+  bool enabled = false;
+  int startHour = 8, startMinute = 0;
+  int endHour = 18, endMinute = 0;
+  int intervalMinutes = 60;
+};
+
+Bytes sedentaryRead();                                // e1 00 00 00 00 00 02
+Bytes sedentaryWrite(const SedentaryReminder& value); // e1 sh sm eh em interval on/off
+// e1 01 sh sm eh em interval enabled op
+std::optional<SedentaryReminder> decodeSedentary(std::span<const uint8_t> value);
+
+struct HeartRateAlarm {
+  bool enabled = false;
+  int high = 115; // bpm
+  int low = 50;
+};
+
+Bytes heartRateAlarmRead();                             // ac 00 00 02
+Bytes heartRateAlarmWrite(const HeartRateAlarm& value); // ac high low on/off
+// ac high low enabled op 01
+std::optional<HeartRateAlarm> decodeHeartRateAlarm(std::span<const uint8_t> value);
+
+struct ScreenOnTime {
+  int seconds = 0;
+  int minSeconds = 0; // range the watch accepts
+  int maxSeconds = 0;
+};
+
+Bytes screenOnTimeRead();                  // b4 02
+Bytes screenOnTimeWrite(int seconds);      // b4 01 <seconds>
+// b4 01 op seconds min max ...
+std::optional<ScreenOnTime> decodeScreenOnTime(std::span<const uint8_t> value);
+
+struct PersonInfo {
+  int heightCm = 170;
+  int weightKg = 70;
+  int age = 30;
+  bool male = true; // H-Band's sex byte, 1 = male (from the APK, unverified)
+  int stepGoal = 8000;
+  int sleepGoalMinutes = 480;
+};
+
+// a3 height weight age sex goal_u16be sleep_u16be. Write only; the watch
+// answers a3 01.
+Bytes personInfoWrite(const PersonInfo& value);
+bool isPersonInfoAck(std::span<const uint8_t> value);
+
+// ---- Stored data ------------------------------------------------------
+
+// Daily history in 5-minute slots. daysAgo 0 = today; the watch sends
+// slots firstSlot..count (1-based), one notification each. Any other
+// command aborts the transfer.
+Bytes historyRead(int daysAgo, int firstSlot = 1); // d1 <first u16le> <day>
+
+struct HistorySlot {
+  int index = 0; // 1-based
+  int count = 0; // slots available for that day
+  int daysAgo = 0;
+  int hour = 0;
+  int minute = 0;
+  int steps = 0;
+  int distanceMeters = 0;
+  int calories = 0;      // raw, see ActivityTotals
+  int activity = 0;      // "sport value", meaning unverified
+  int heartRate = 0;     // average bpm, 0 if not measured
+};
+
+std::optional<HistorySlot> decodeHistorySlot(std::span<const uint8_t> value);
+
+// Workouts (sport mode) are kept in slots 1..kWorkoutSlots.
+inline constexpr int kWorkoutSlots = 3;
+Bytes workoutRead(int slot); // d4 <slot>
+
+struct WorkoutFrame {
+  int index = 0; // 1-based; 0 with count 0 for an empty slot
+  int count = 0;
+  int slot = 0;
+};
+
+// d4 <index u16le> <count u16le> <slot> <14 payload bytes>
+std::optional<WorkoutFrame> decodeWorkoutFrame(std::span<const uint8_t> value);
+
+struct DateTime {
+  int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+};
+
+struct WorkoutMinute {
+  int heartRate = 0;
+  int activity = 0;
+  int steps = 0;
+  int calories = 0; // 1/1000 kcal
+  int distanceMeters = 0;
+};
+
+struct Workout {
+  DateTime start;
+  DateTime end;
+  int steps = 0;
+  int distanceMeters = 0;
+  int calories = 0; // 1/1000 kcal
+  int activity = 0;
+  std::vector<WorkoutMinute> minutes;
+};
+
+// Assembles all frames of one slot (in order, as received).
+std::optional<Workout> decodeWorkout(const std::vector<Bytes>& frames);
 
 } // namespace s226::protocol
