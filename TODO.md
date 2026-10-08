@@ -2,12 +2,12 @@
 
 ## Current tip
 
-- Repo tip: `3445c39` (Add AGENTS.md and TODO.md for agent continuity)
+- Repo tip: `96a0bda` (Update TODO.md with current tip and first bundle)
 - Work-line base (for bundle ranges): `94f9363`
 - Branch: master
 - Version: 0.2.0-dev
-- Latest bundle: `/home/workdir/artifacts/s226-001.1-init-agents-todo-94f9363.bundle`
-  (contains 94f9363..3445c39)
+- Latest bundle: `/home/workdir/artifacts/s226-002.1-init-agents-todo-94f9363.bundle`
+  (contains 94f9363..96a0bda; supersedes 001)
 
 ## Open work / known gaps (from README / PROTOCOL)
 
@@ -32,7 +32,8 @@ Code / product:
 
 - Initial checkout: shallow then unshallowed; 52 commits on master.
 - Created `AGENTS.md` and this `TODO.md` for continuity (they were missing).
-- Committed as `3445c39`; produced bundle `s226-001.1-init-agents-todo-94f9363.bundle`.
+- Commits: `3445c39` (add docs), `96a0bda` (tip update).
+- Produced superseding bundle `s226-002.1-init-agents-todo-94f9363.bundle`.
 - No functional changes yet; waiting for a concrete task.
 
 ## Next actions
