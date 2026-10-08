@@ -2,14 +2,18 @@
 
 ## Current tip
 
-- Work-line base: `94f9363`
-- See latest bundle in artifacts.
+- Repo tip: `bbcdbcb` (Add tabbed GUI exposing full CLI feature set in s226-hr)
+- Work-line base (for bundle ranges): `94f9363`
+- Branch: master
+- Version: 0.2.0-dev
+- Latest bundle: `/home/workdir/artifacts/s226-007.1-tabbed-gui-full-features-94f9363.bundle`
+  (range 94f9363..bbcdbcb)
 
-## Goal
+## Goal (done)
 
 Full feature set from s226-cli integrated into s226-hr via tabs.
 
-### UI (done in this sequence)
+### UI
 
 Global toolbar: Controller, Watch, Connect, Log, Full screen.
 
@@ -28,11 +32,9 @@ WatchBridge: `request`, `requestStream`, `send`, `connectedChanged`, cancel on d
 
 ## Session notes
 
-- Sandbox wipes `/tmp` frequently; work under `/home/workdir/s226`.
 - Implementation complete; user should build/test with real hardware.
-- Man page / README still need a short update for the new tabs (optional follow-up).
+- Optional follow-up: man page / README note about the tabs; richer alarm weekday picker.
 
 ## Next actions
 
-- Build and smoke-test on hardware.
-- Optional: polish alarm day-of-week UI, README/man page.
+- Build and smoke-test on hardware (`nix build` / `nix run .#s226-hr`).
