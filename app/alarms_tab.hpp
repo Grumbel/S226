@@ -15,6 +15,7 @@ public:
   explicit AlarmsTab(WatchBridge& bridge, QWidget* parent = nullptr);
   void setConnected(bool connected);
   void refresh();
+  void onShown();
 
 private:
   void buildUi();
@@ -25,6 +26,7 @@ private:
 
   WatchBridge& bridge_;
   bool connected_ = false;
+  bool needRefresh_ = false;
   QTableWidget* table_ = nullptr;
   QPushButton* refreshBtn_ = nullptr;
   QPushButton* addBtn_ = nullptr;

@@ -3,6 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -30,7 +31,9 @@ void SettingsTab::buildUi() {
 
   auto* btnRow = new QHBoxLayout;
   refreshBtn_ = new QPushButton(tr("Refresh"), this);
+  refreshBtn_->setToolTip(tr("Load current settings from the watch"));
   applyBtn_ = new QPushButton(tr("Apply"), this);
+  applyBtn_->setToolTip(tr("Write the form values to the watch"));
   status_ = new QLabel(this);
   status_->setWordWrap(true);
   connect(refreshBtn_, &QPushButton::clicked, this, &SettingsTab::refresh);
@@ -42,11 +45,11 @@ void SettingsTab::buildUi() {
 
   auto* scroll = new QScrollArea(this);
   scroll->setWidgetResizable(true);
-  auto* formHost = new QWidget;
-  auto* form = new QVBoxLayout(formHost);
+  formHost_ = new QWidget;
+  auto* form = new QVBoxLayout(formHost_);
 
   {
-    auto* g = new QGroupBox(tr("Sedentary reminder"), formHost);
+    auto* g = new QGroupBox(tr("Sedentary reminder"), formHost_);
     auto* f = new QFormLayout(g);
     sedentaryOn_ = new QCheckBox(tr("Enabled"), g);
     sedentaryStart_ = new QTimeEdit(QTime(8, 0), g);
@@ -63,7 +66,7 @@ void SettingsTab::buildUi() {
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Heart-rate alarm"), formHost);
+    auto* g = new QGroupBox(tr("Heart-rate alarm"), formHost_);
     auto* f = new QFormLayout(g);
     hrAlarmOn_ = new QCheckBox(tr("Enabled"), g);
     hrAlarmLow_ = new QSpinBox(g);
@@ -78,7 +81,7 @@ void SettingsTab::buildUi() {
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Screen on time"), formHost);
+    auto* g = new QGroupBox(tr("Screen on time"), formHost_);
     auto* f = new QFormLayout(g);
     screenOn_ = new QSpinBox(g);
     screenOn_->setRange(1, 255);
@@ -89,7 +92,7 @@ void SettingsTab::buildUi() {
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Brightness"), formHost);
+    auto* g = new QGroupBox(tr("Brightness"), formHost_);
     auto* f = new QFormLayout(g);
     brightnessMode_ = new QComboBox(g);
     brightnessMode_->addItem(tr("Manual"), 0);
@@ -110,9 +113,12 @@ void SettingsTab::buildUi() {
     f->addRow(tr("Night to"), brightnessEnd_);
     f->addRow(tr("Max level"), brightnessMax_);
     form->addWidget(g);
+    connect(brightnessMode_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { updateBrightnessUi(); });
+    updateBrightnessUi();
   }
   {
-    auto* g = new QGroupBox(tr("Countdown preset"), formHost);
+    auto* g = new QGroupBox(tr("Countdown preset"), formHost_);
     auto* f = new QFormLayout(g);
     countdownSec_ = new QSpinBox(g);
     countdownSec_->setRange(0, 24 * 3600);
@@ -123,7 +129,7 @@ void SettingsTab::buildUi() {
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Watch face"), formHost);
+    auto* g = new QGroupBox(tr("Watch face"), formHost_);
     auto* f = new QFormLayout(g);
     watchFace_ = new QSpinBox(g);
     watchFace_->setRange(0, 20);
@@ -131,7 +137,7 @@ void SettingsTab::buildUi() {
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Personal data"), formHost);
+    auto* g = new QGroupBox(tr("Personal data"), formHost_);
     auto* f = new QFormLayout(g);
     personHeight_ = new QSpinBox(g);
     personHeight_->setRange(50, 250);
@@ -161,44 +167,72 @@ void SettingsTab::buildUi() {
     f->addRow(tr("Sex"), personSex_);
     f->addRow(tr("Step goal"), personStepGoal_);
     f->addRow(tr("Sleep goal"), personSleepGoal_);
+    auto* note = new QLabel(tr("Write-only: the watch does not report current personal data."), g);
+    note->setWordWrap(true);
+    note->setStyleSheet(QStringLiteral("color: palette(mid);"));
+    f->addRow(note);
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Features"), formHost);
-    auto* lay = new QVBoxLayout(g);
+    auto* g = new QGroupBox(tr("Features"), formHost_);
+    auto* grid = new QGridLayout(g);
     featureChecks_.clear();
+    int col = 0, row = 0;
     for (const auto& feat : proto::kWatchFeatures) {
       auto* cb = new QCheckBox(QString::fromUtf8(feat.name.data(), int(feat.name.size())), g);
       cb->setProperty("featureOffset", int(feat.offset));
-      lay->addWidget(cb);
+      grid->addWidget(cb, row, col);
       featureChecks_.push_back(cb);
+      if (++col >= 3) { col = 0; ++row; }
     }
     form->addWidget(g);
   }
   {
-    auto* g = new QGroupBox(tr("Message types shown on the watch"), formHost);
-    auto* lay = new QVBoxLayout(g);
+    auto* g = new QGroupBox(tr("Message types shown on the watch"), formHost_);
+    auto* grid = new QGridLayout(g);
     messageChecks_.clear();
+    int col = 0, row = 0;
     for (size_t i = 0; i < proto::kMessageTypeNames.size(); ++i) {
       auto* cb = new QCheckBox(
           QString::fromUtf8(proto::kMessageTypeNames[i].data(), int(proto::kMessageTypeNames[i].size())), g);
       cb->setProperty("messageIndex", int(i));
-      lay->addWidget(cb);
+      grid->addWidget(cb, row, col);
       messageChecks_.push_back(cb);
+      if (++col >= 3) { col = 0; ++row; }
     }
     form->addWidget(g);
   }
 
   form->addStretch(1);
-  scroll->setWidget(formHost);
+  scroll->setWidget(formHost_);
   outer->addWidget(scroll, 1);
 }
 
 void SettingsTab::setConnected(bool connected) {
   connected_ = connected;
+  needRefresh_ = connected;
   refreshBtn_->setEnabled(connected && !busy_);
   applyBtn_->setEnabled(connected && !busy_);
-  if (!connected) status_->setText(tr("Connect to a watch to load or change settings."));
+  if (formHost_) formHost_->setEnabled(connected);
+  if (!connected) {
+    status_->setText(tr("Connect to a watch to load or change settings."));
+  }
+}
+
+void SettingsTab::onShown() {
+  if (connected_ && needRefresh_ && !busy_) {
+    needRefresh_ = false;
+    refresh();
+  }
+}
+
+void SettingsTab::updateBrightnessUi() {
+  const bool automatic = brightnessMode_ && brightnessMode_->currentData().toInt() == 1;
+  if (brightnessLevel_) brightnessLevel_->setEnabled(automatic);
+  if (brightnessStart_) brightnessStart_->setEnabled(automatic);
+  if (brightnessEnd_) brightnessEnd_->setEnabled(automatic);
+  // Day/manual level always relevant
+  if (brightnessOther_) brightnessOther_->setEnabled(true);
 }
 
 void SettingsTab::setBusy(bool busy) {

@@ -65,6 +65,7 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
                        QWidget* parent)
     : QMainWindow(parent), controllerOverride_(controllerOverride) {
   setWindowTitle(tr("S226 Heart Rate"));
+  setMinimumSize(720, 520);
   buildUi();
   refreshControllers();
 
@@ -161,6 +162,7 @@ void MainWindow::buildUi() {
 
   bpButton_ = new QPushButton(tr("Blood pressure"), liveBar);
   bpButton_->setToolTip(tr("Start a blood-pressure measurement on the watch"));
+  bpButton_->setEnabled(false);
   connect(bpButton_, &QPushButton::clicked, this, [this] {
     if (bpRunning_) {
       bridge_.stopBloodPressure();
@@ -200,6 +202,13 @@ void MainWindow::buildUi() {
   tabs_->addTab(historyTab_, tr("History"));
   workoutsTab_ = new WorkoutsTab(bridge_, tabs_);
   tabs_->addTab(workoutsTab_, tr("Workouts"));
+
+  connect(tabs_, &QTabWidget::currentChanged, this, [this](int index) {
+    if (index < 0) return;
+    QWidget* w = tabs_->widget(index);
+    if (w == settingsTab_) settingsTab_->onShown();
+    else if (w == alarmsTab_) alarmsTab_->onShown();
+  });
 
   // Connection toolbar
   auto* bar = addToolBar(tr("Connection"));
@@ -370,7 +379,13 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   stateLabel_->setText(text);
   const bool connected = (state == s226::WatchState::Connected);
   setTabsEnabled(connected);
+  bpButton_->setEnabled(connected);
   if (connected && !detail.isEmpty()) rememberWatch(detail);
+  if (connected) {
+    // Auto-load the visible feature tab once connected.
+    if (tabs_->currentWidget() == settingsTab_) settingsTab_->onShown();
+    else if (tabs_->currentWidget() == alarmsTab_) alarmsTab_->onShown();
+  }
   if (state != s226::WatchState::Connected) {
     batteryLabel_->clear();
     stepRate_.reset();
@@ -380,6 +395,7 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
     if (bpRunning_) {
       bpRunning_ = false;
       bpButton_->setText(tr("Blood pressure"));
+      view_->setSecondary({});
     }
   }
   view_->setStatus(state == s226::WatchState::Connected ? tr("Measuring...") : text);

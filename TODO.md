@@ -3,20 +3,21 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-011…`
+- Latest bundle: artifacts `s226-012…`
 
-## Done in this sequence
+## Done
 
-1. WatchBridge `request` / `requestStream` / `send` / `connectedChanged`
-2. Tabbed s226-hr: Live, Settings, Alarms, Notify, History, Workouts
-3. Man page, README, AppStream for the tabs
-4. Alarm weekday checkboxes (All / Clear; empty days → one-shot)
-5. AGENTS.md architecture map updated; `#include <algorithm>` in settings_tab
+Tabbed GUI with full CLI feature set, docs, alarm weekday picker, and a
+polish pass:
+
+- Min window size; BP disabled until connected
+- Settings/Alarms auto-load once when the tab is shown after connect
+- Settings: 3-column feature/message grids; brightness night fields
+  gated by Automatic mode; personal-data write-only note
+- Tables: alternating rows, double-click to edit alarm
+- Notify: group boxes, Enter to send, clear buttons, tooltips
+- Workouts: expand first result, resize columns
 
 ## User-side
 
-- Build and smoke-test on hardware (`nix run .#s226-hr`)
-
-## Protocol gaps (unchanged)
-
-- 0xA7 dump; D1 bytes 14-16/18; fee7/HID role
+- Build and smoke-test on hardware

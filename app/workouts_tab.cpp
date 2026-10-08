@@ -34,6 +34,10 @@ void WorkoutsTab::buildUi() {
   tree_->setHeaderLabels(
       {tr("Workout"), tr("Duration"), tr("Steps"), tr("Distance"), tr("kcal"), tr("HR")});
   tree_->setUniformRowHeights(true);
+  tree_->setAlternatingRowColors(true);
+  tree_->setRootIsDecorated(true);
+  tree_->setAnimated(true);
+  tree_->header()->setStretchLastSection(true);
   lay->addWidget(tree_, 1);
 }
 
@@ -61,6 +65,8 @@ void WorkoutsTab::fetch() {
       fetchBtn_->setEnabled(connected_);
       status_->setText(*found == 0 ? tr("No workouts stored.")
                                    : tr("%1 workout(s).").arg(*found));
+      if (tree_->topLevelItemCount() > 0) tree_->expandItem(tree_->topLevelItem(0));
+      for (int c = 0; c < tree_->columnCount(); ++c) tree_->resizeColumnToContents(c);
       return;
     }
     const int s = *slot;

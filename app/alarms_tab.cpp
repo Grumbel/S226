@@ -133,7 +133,9 @@ void AlarmsTab::buildUi() {
   auto* lay = new QVBoxLayout(this);
   auto* btn = new QHBoxLayout;
   refreshBtn_ = new QPushButton(tr("Refresh"), this);
+  refreshBtn_->setToolTip(tr("Reload alarms from the watch"));
   addBtn_ = new QPushButton(tr("Add"), this);
+  addBtn_->setToolTip(tr("Create a new alarm"));
   editBtn_ = new QPushButton(tr("Edit"), this);
   deleteBtn_ = new QPushButton(tr("Delete"), this);
   status_ = new QLabel(this);
@@ -154,11 +156,16 @@ void AlarmsTab::buildUi() {
   table_->setSelectionBehavior(QAbstractItemView::SelectRows);
   table_->setSelectionMode(QAbstractItemView::SingleSelection);
   table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table_->setAlternatingRowColors(true);
+  table_->setShowGrid(false);
+  table_->verticalHeader()->setVisible(false);
+  connect(table_, &QTableWidget::doubleClicked, this, [this](const QModelIndex&) { editAlarm(); });
   lay->addWidget(table_, 1);
 }
 
 void AlarmsTab::setConnected(bool connected) {
   connected_ = connected;
+  needRefresh_ = connected;
   refreshBtn_->setEnabled(connected);
   addBtn_->setEnabled(connected);
   editBtn_->setEnabled(connected);
@@ -167,6 +174,13 @@ void AlarmsTab::setConnected(bool connected) {
     table_->setRowCount(0);
     alarms_.clear();
     status_->setText(tr("Connect to a watch to manage alarms."));
+  }
+}
+
+void AlarmsTab::onShown() {
+  if (connected_ && needRefresh_) {
+    needRefresh_ = false;
+    refresh();
   }
 }
 
@@ -183,6 +197,8 @@ void AlarmsTab::fillTable(const std::vector<proto::Alarm>& alarms) {
     table_->setItem(i, 2, new QTableWidgetItem(daysText(a)));
     table_->setItem(i, 3, new QTableWidgetItem(a.enabled ? tr("yes") : tr("no")));
   }
+  table_->resizeColumnsToContents();
+  table_->horizontalHeader()->setStretchLastSection(true);
 }
 
 void AlarmsTab::refresh() {

@@ -1,6 +1,7 @@
 #include "notify_tab.hpp"
 
 #include <QComboBox>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -20,33 +21,42 @@ NotifyTab::NotifyTab(WatchBridge& bridge, QWidget* parent)
 void NotifyTab::buildUi() {
   auto* lay = new QVBoxLayout(this);
 
-  auto* msgRow = new QHBoxLayout;
-  messageEdit_ = new QLineEdit(this);
+  auto* msgBox = new QGroupBox(tr("Message"), this);
+  auto* msgRow = new QHBoxLayout(msgBox);
+  messageEdit_ = new QLineEdit(msgBox);
   messageEdit_->setPlaceholderText(tr("Message text"));
-  messageType_ = new QComboBox(this);
+  messageEdit_->setClearButtonEnabled(true);
+  connect(messageEdit_, &QLineEdit::returnPressed, this, &NotifyTab::sendMessage);
+  messageType_ = new QComboBox(msgBox);
   for (size_t i = 0; i < proto::kMessageTypeNames.size(); ++i)
     messageType_->addItem(
         QString::fromUtf8(proto::kMessageTypeNames[i].data(), int(proto::kMessageTypeNames[i].size())),
         int(i));
   messageType_->setCurrentIndex(int(proto::MessageType::Other));
-  sendBtn_ = new QPushButton(tr("Send message"), this);
+  sendBtn_ = new QPushButton(tr("Send message"), msgBox);
+  sendBtn_->setToolTip(tr("Show this text on the watch (type must be enabled in Settings)"));
   connect(sendBtn_, &QPushButton::clicked, this, &NotifyTab::sendMessage);
   msgRow->addWidget(messageEdit_, 1);
   msgRow->addWidget(messageType_);
   msgRow->addWidget(sendBtn_);
-  lay->addLayout(msgRow);
+  lay->addWidget(msgBox);
 
-  auto* callRow = new QHBoxLayout;
-  callName_ = new QLineEdit(this);
+  auto* callBox = new QGroupBox(tr("Incoming call"), this);
+  auto* callRow = new QHBoxLayout(callBox);
+  callName_ = new QLineEdit(callBox);
   callName_->setPlaceholderText(tr("Caller name"));
-  callBtn_ = new QPushButton(tr("Incoming call"), this);
-  endCallBtn_ = new QPushButton(tr("End call"), this);
+  callName_->setClearButtonEnabled(true);
+  connect(callName_, &QLineEdit::returnPressed, this, &NotifyTab::sendCall);
+  callBtn_ = new QPushButton(tr("Ring"), callBox);
+  callBtn_->setToolTip(tr("Show the incoming-call screen with this name"));
+  endCallBtn_ = new QPushButton(tr("End call"), callBox);
+  endCallBtn_->setToolTip(tr("Dismiss the call screen on the watch"));
   connect(callBtn_, &QPushButton::clicked, this, &NotifyTab::sendCall);
   connect(endCallBtn_, &QPushButton::clicked, this, &NotifyTab::endCall);
   callRow->addWidget(callName_, 1);
   callRow->addWidget(callBtn_);
   callRow->addWidget(endCallBtn_);
-  lay->addLayout(callRow);
+  lay->addWidget(callBox);
 
   status_ = new QLabel(this);
   status_->setWordWrap(true);

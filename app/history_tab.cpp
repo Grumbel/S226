@@ -39,6 +39,10 @@ void HistoryTab::buildUi() {
       {tr("Time"), tr("Steps"), tr("Distance (m)"), tr("kcal"), tr("Activity"), tr("HR")});
   table_->horizontalHeader()->setStretchLastSection(true);
   table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table_->setAlternatingRowColors(true);
+  table_->setShowGrid(false);
+  table_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  table_->verticalHeader()->setVisible(false);
   lay->addWidget(table_, 1);
 }
 
@@ -86,6 +90,8 @@ void HistoryTab::fetch() {
           ++row;
         }
         table_->setRowCount(row);
+        table_->resizeColumnsToContents();
+        table_->horizontalHeader()->setStretchLastSection(true);
         status_->setText(tr("%1 slot(s).").arg(row));
       },
       30000);

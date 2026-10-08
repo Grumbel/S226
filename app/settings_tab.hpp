@@ -10,6 +10,7 @@ class QCheckBox;
 class QSpinBox;
 class QComboBox;
 class QTimeEdit;
+class QWidget;
 
 class SettingsTab : public QWidget {
   Q_OBJECT
@@ -17,19 +18,24 @@ public:
   explicit SettingsTab(WatchBridge& bridge, QWidget* parent = nullptr);
   void setConnected(bool connected);
   void refresh();
+  // Called when the tab becomes visible; loads once after each connect.
+  void onShown();
 
 private:
   void buildUi();
   void apply();
   void setBusy(bool busy);
+  void updateBrightnessUi();
 
   WatchBridge& bridge_;
   bool connected_ = false;
   bool busy_ = false;
+  bool needRefresh_ = false;
 
   QPushButton* refreshBtn_ = nullptr;
   QPushButton* applyBtn_ = nullptr;
   QLabel* status_ = nullptr;
+  QWidget* formHost_ = nullptr;
 
   QCheckBox* sedentaryOn_ = nullptr;
   QTimeEdit* sedentaryStart_ = nullptr;
