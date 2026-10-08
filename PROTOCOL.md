@@ -269,9 +269,11 @@ values. "✓" means the capture agrees with the APK name.
 | `d4 <slot>` | sport-mode records | ✓ workout in slot 1-3, see below; an empty slot answers `d4 00 00 00 00 <slot>` |
 | `c7 01 0N` | read screen style | — |
 | `ae 01` | find watch | `ae 00 …` to every variant tried (`ae 01`, `ae 02`, `ae 01 01`, 20-byte padded); the S226 does not vibrate, so it is probably unsupported |
-| `c1 01 01 01` / `c1 01 06 00` / `c1 00 00 00` | SMS alert / incoming call / stop | ack `c1 xx 01`; showed nothing on the S226 (phone/SMS are switched off in `ad`) |
+| `c1 01 01 01` / `c1 01 06 00` / `c1 00 00 00` | SMS alert / incoming call / stop | ack `c1 xx 01` |
 | `c2 <type> <len> <total> <index> <flag> <14 bytes UTF-8>` | message text | ✓ no reply; type 17 ("other") with flag 2 (body) is displayed, multi-packet UTF-8 included. Packets ~120 ms apart |
-| `ad 02` | message switches | reply `ad 02` + one byte per message type (byte 2 + type): `01` on, `02` off, `00` unsupported; only type 17 is on here (inferred from what displayed) |
+| `ad 02` / `ad 01 <x18>` | message switches | ✓ read / write; reply `ad <op>` + one byte per message type (byte 2 + type): `01` on, `02` off, `00` unsupported. Factory state here: only twitter, instagram, snapchat and other on |
+| `c1 01 01 01` + `c2 01 …` | SMS | ✓ shown once `sms` is switched on (type 1, flag 2) |
+| `c1 01 06 00` + `c2 00 … flag 1` | incoming call | ✓ call screen with the name until `c1 00 00 00`; long press (accept) sends `c1 02 00`, short press (reject) `c1 03 00`. A new call alert sent 0.3 s after `c1 00 00 00` was acked but not shown |
 | `d0 01` / `d0 00` | current heart rate | ✓ **Heart rate** start / stop |
 | `90 01 00` / `90 00 00` | BP | ✓ **Blood pressure** start / stop |
 
@@ -421,7 +423,7 @@ sudo nix run .#s226-bumble -- --transport usb:0bda:b82c \
 
 * Meaning of the trailing status byte in 0xD0 / 0x90 frames
 * 0xD1 bytes 14-16 and 18; 0xD3 reply layout; workout header bytes 33-38
-* How to write the `ad` switches (to enable call / SMS display)
+* Message display time is fixed at ~5 s (independent of `b4`); no setting known
 * Alarm (`b1`) and countdown exact layouts
 * Notification (ANCS-style) path — not in this capture
 * `f002` secondary channel role

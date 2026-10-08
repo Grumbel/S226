@@ -246,6 +246,60 @@ void printScreenOnTime(const proto::ScreenOnTime& t) {
   std::printf("Screen on:     %d s (%d-%d s)\n", t.seconds, t.minSeconds, t.maxSeconds);
 }
 
+void printMessageSwitches(const proto::MessageSwitches& m) {
+  std::string on, off;
+  for (size_t i = 0; i < m.state.size(); ++i) {
+    if (m.state[i] == proto::MessageSwitches::Unsupported) continue;
+    std::string& list = m.state[i] == proto::MessageSwitches::On ? on : off;
+    if (!list.empty()) list += ", ";
+    list += proto::kMessageTypeNames[i];
+  }
+  std::printf("Messages on:   %s\n", on.empty() ? "none" : on.c_str());
+  std::printf("Messages off:  %s\n", off.empty() ? "none" : off.c_str());
+}
+
+// Comma-separated type names, "all" or "none" -> set of indices.
+std::optional<std::vector<bool>> parseMessageTypes(const std::string& s) {
+  std::vector<bool> want(proto::kMessageTypeNames.size(), false);
+  if (s == "all") return std::vector<bool>(want.size(), true);
+  if (s == "none") return want;
+  size_t pos = 0;
+  while (pos <= s.size()) {
+    const size_t end = std::min(s.find(',', pos), s.size());
+    const std::string name = s.substr(pos, end - pos);
+    auto it = std::find(proto::kMessageTypeNames.begin(), proto::kMessageTypeNames.end(), name);
+    if (it == proto::kMessageTypeNames.end()) return std::nullopt;
+    want[static_cast<size_t>(it - proto::kMessageTypeNames.begin())] = true;
+    pos = end + 1;
+  }
+  return want;
+}
+
+Action setMessageTypes(std::vector<bool> want) {
+  return [want](Session& s) {
+    auto current = s.query<proto::MessageSwitches>(proto::messageSwitchesRead(),
+                                                   proto::decodeMessageSwitches);
+    if (!current) return fail("the message switch query");
+    proto::MessageSwitches m = *current;
+    for (size_t i = 0; i < m.state.size(); ++i) {
+      // Call and SMS are always supported, even though they read as 2 when off.
+      if (i >= 2 && m.state[i] == proto::MessageSwitches::Unsupported) {
+        if (want[i]) {
+          std::fprintf(stderr, "The watch does not support %s messages\n",
+                       std::string(proto::kMessageTypeNames[i]).c_str());
+        }
+        continue;
+      }
+      m.state[i] = want[i] ? proto::MessageSwitches::On : proto::MessageSwitches::Off;
+    }
+    auto result = s.query<proto::MessageSwitches>(proto::messageSwitchesWrite(m),
+                                                  proto::decodeMessageSwitches);
+    if (!result) return fail("the message switch setting");
+    printMessageSwitches(*result);
+    return result->state == m.state;
+  };
+}
+
 bool showSettings(Session& s) {
   auto sed = s.query<proto::SedentaryReminder>(proto::sedentaryRead(), proto::decodeSedentary);
   if (!sed) return fail("the sedentary query");
@@ -257,6 +311,10 @@ bool showSettings(Session& s) {
   auto scr = s.query<proto::ScreenOnTime>(proto::screenOnTimeRead(), proto::decodeScreenOnTime);
   if (!scr) return fail("the screen-on time query");
   printScreenOnTime(*scr);
+  auto msg = s.query<proto::MessageSwitches>(proto::messageSwitchesRead(),
+                                             proto::decodeMessageSwitches);
+  if (!msg) return fail("the message switch query");
+  printMessageSwitches(*msg);
   return true;
 }
 
@@ -333,12 +391,50 @@ Action setPerson(proto::PersonInfo p) {
   };
 }
 
-Action notify(std::string text) {
-  return [text](Session& s) {
-    for (const auto& packet : proto::messagePackets(text)) {
+Action notify(std::string text, proto::MessageType type) {
+  return [text, type](Session& s) {
+    if (type == proto::MessageType::Sms) {
+      s.watch().send(proto::smsAlert());
+      std::this_thread::sleep_for(120ms);
+    }
+    for (const auto& packet : proto::messagePackets(text, type)) {
       s.watch().send(packet);
       std::this_thread::sleep_for(120ms);
     }
+    return true;
+  };
+}
+
+// Rings until the watch reports a key press or the time is up.
+Action call(std::string name) {
+  return [name](Session& s) {
+    constexpr auto kRingTime = 20s;
+    auto ack = s.request(proto::callAlert(), [](const Bytes& v) {
+      return v.size() >= 3 && v[0] == 0xC1 && v[1] == 0x01;
+    });
+    if (!ack) return fail("the call alert");
+    for (const auto& packet : proto::callerPackets(name)) {
+      std::this_thread::sleep_for(120ms);
+      s.watch().send(packet);
+    }
+    std::printf("Ringing: %s\n", name.c_str());
+    std::fflush(stdout);
+    // Acks of our commands are c1 xx 01; the watch reports a long press
+    // (accept) as c1 02 00 and a short press (reject) as c1 03 00.
+    auto answer = s.next(
+        [](const Bytes& v) { return v.size() >= 3 && v[0] == 0xC1 && v[2] != 0x01; }, kRingTime);
+    if (answer && (*answer)[1] == 0x02) {
+      std::puts("Accepted on the watch");
+    } else if (answer && (*answer)[1] == 0x03) {
+      std::puts("Rejected on the watch");
+    } else if (answer) {
+      std::printf("Watch: %s\n", toHex(*answer).c_str());
+    } else {
+      std::puts("No answer");
+    }
+    s.watch().send(proto::callEnd());
+    // A call alert right after the end is acked but not shown.
+    std::this_thread::sleep_for(2s);
     return true;
   };
 }
@@ -476,6 +572,12 @@ void usage(const char* argv0) {
       "      --history[=DAY]     5-minute activity slots as CSV; DAY 0 = today (default)\n"
       "      --workouts          workouts recorded in sport mode\n"
       "      --notify TEXT       show a message on the watch\n"
+      "      --call NAME         ring with an incoming call from NAME (20 s at most)\n"
+      "      --notify-type TYPE  message type for the following --notify (default other;\n"
+      "                          must be switched on with --messages)\n"
+      "      --messages LIST     message types the watch shows, comma-separated:\n"
+      "                          call, sms, whatsapp, gmail, other, ... (see --settings),\n"
+      "                          or all, none\n"
       "      --sedentary on|off|HH:MM-HH:MM/MIN\n"
       "                          sedentary reminder, e.g. 08:00-18:00/60\n"
       "      --hr-alarm on|off|LOW-HIGH\n"
@@ -496,6 +598,7 @@ int main(int argc, char** argv) {
   bool bloodPressure = false;
   double duration = 0;
   std::vector<Action> actions;
+  proto::MessageType notifyType = proto::MessageType::Other;
 
   enum {
     OptBp = 1000,
@@ -507,6 +610,9 @@ int main(int argc, char** argv) {
     OptScreenTime,
     OptPerson,
     OptNotify,
+    OptMessages,
+    OptNotifyType,
+    OptCall,
   };
   const option longopts[] = {{"list", no_argument, nullptr, 'l'},
                              {"controller", required_argument, nullptr, 'c'},
@@ -525,6 +631,9 @@ int main(int argc, char** argv) {
                              {"screen-time", required_argument, nullptr, OptScreenTime},
                              {"person", required_argument, nullptr, OptPerson},
                              {"notify", required_argument, nullptr, OptNotify},
+                             {"messages", required_argument, nullptr, OptMessages},
+                             {"notify-type", required_argument, nullptr, OptNotifyType},
+                             {"call", required_argument, nullptr, OptCall},
                              {"send", required_argument, nullptr, OptSend},
                              {nullptr, 0, nullptr, 0}};
   auto bad = [&](const char* what, const char* arg) {
@@ -585,7 +694,23 @@ int main(int argc, char** argv) {
       actions.push_back(setPerson(*p));
       break;
     }
-    case OptNotify: actions.push_back(notify(optarg)); break;
+    case OptNotify: actions.push_back(notify(optarg, notifyType)); break;
+    case OptCall: actions.push_back(call(optarg)); break;
+    case OptNotifyType: {
+      auto it = std::find(proto::kMessageTypeNames.begin(), proto::kMessageTypeNames.end(),
+                          std::string_view(optarg));
+      if (it == proto::kMessageTypeNames.end() || it == proto::kMessageTypeNames.begin()) {
+        return bad("message type", optarg);
+      }
+      notifyType = static_cast<proto::MessageType>(it - proto::kMessageTypeNames.begin());
+      break;
+    }
+    case OptMessages: {
+      auto want = parseMessageTypes(optarg);
+      if (!want) return bad("message types", optarg);
+      actions.push_back(setMessageTypes(*want));
+      break;
+    }
     case OptSend: {
       auto b = parseHex(optarg);
       if (!b) return bad("hex bytes", optarg);

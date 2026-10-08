@@ -90,8 +90,39 @@ Print the workouts recorded in the watch's sport mode (up to three):
 a summary line with start, end and totals, then one CSV row per minute.
 .TP
 .BR \-\-notify " " \fItext\fR
-Show a message on the watch (UTF-8; sent as the "other apps" type, the
-only one switched on by default).
+Show a message on the watch (UTF-8).
+.TP
+.BR \-\-call " " \fIname\fR
+Show an incoming call from
+.I name
+(UTF-8) and ring until it is accepted (long press) or rejected (short
+press) on the watch, or for 20 seconds.
+Prints which of these happened.
+.B call
+must be switched on with
+.BR \-\-messages .
+.TP
+.BR \-\-notify\-type " " \fItype\fR
+Message type for the following
+.B \-\-notify
+options:
+.BR sms ,
+.BR whatsapp ,
+.BR other
+(the default) or another name listed by
+.BR \-\-settings .
+The watch only shows types that are switched on.
+.TP
+.BR \-\-messages " " \fIlist\fR
+Switch on exactly these message types (comma-separated, or
+.B all
+or
+.BR none )
+and switch off all others the watch supports.
+.B call
+and
+.B sms
+are off on a watch that was never set up for them.
 .TP
 .BR \-\-sedentary " " \fBon\fR | \fBoff\fR | \fIHH:MM\fB\-\fIHH:MM\fB/\fIminutes\fR
 Switch the sedentary reminder on or off, or set its time window and

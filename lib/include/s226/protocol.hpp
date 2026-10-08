@@ -92,17 +92,43 @@ std::optional<Battery> decodeBattery(std::span<const uint8_t> value);
 // ---- Messages -------------------------------------------------------
 
 // Message source shown by the watch. Only types switched on in the
-// watch's 0xAD table are displayed; on the S226 that is Other by default.
+// watch's 0xAD table are displayed; by default only Other on the S226.
+// Index into kMessageTypeNames.
 enum class MessageType : uint8_t {
-  Phone = 0,
+  Call = 0,
+  Sms = 1,
   WeChat = 2,
   WhatsApp = 9,
   Other = 17,
 };
 
+Bytes smsAlert();  // c1 01 01 01, sent before an SMS text
+Bytes callAlert(); // c1 01 06 00: incoming call, followed by callerPackets()
+Bytes callEnd();   // c1 00 00 00: stop ringing
+
+// Message types in the order of the 0xAD switch table.
+inline constexpr std::array<std::string_view, 18> kMessageTypeNames = {
+    "call",     "sms",       "wechat",   "qq",        "weibo",    "facebook",
+    "twitter",  "flickr",    "linkedin", "whatsapp",  "line",     "instagram",
+    "snapchat", "skype",     "gmail",    "dingtalk",  "wechatwork", "other"};
+
+// Which message types the watch displays. Call and SMS are always
+// supported; for the others 0 means unsupported.
+struct MessageSwitches {
+  enum : uint8_t { Unsupported = 0, On = 1, Off = 2 };
+  std::array<uint8_t, kMessageTypeNames.size()> state{};
+};
+
+Bytes messageSwitchesRead();                              // ad 02
+Bytes messageSwitchesWrite(const MessageSwitches& value); // ad 01 <state x18>
+// ad <op> <state x18>; also sent unasked right after the bind
+std::optional<MessageSwitches> decodeMessageSwitches(std::span<const uint8_t> value);
+
 // c2 <type> <len> <total> <index> <flag 2 = body> <14 bytes UTF-8>, one
 // 20-byte packet per 14 bytes of text. H-Band sends them ~120 ms apart.
 std::vector<Bytes> messagePackets(std::string_view text, MessageType type = MessageType::Other);
+// Caller name or number for an incoming call (type Call, flag 1).
+std::vector<Bytes> callerPackets(std::string_view name);
 
 // ---- Settings ---------------------------------------------------------
 //

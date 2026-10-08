@@ -136,7 +136,28 @@ std::optional<Battery> decodeBattery(std::span<const uint8_t> v) {
   return b;
 }
 
-std::vector<Bytes> messagePackets(std::string_view text, MessageType type) {
+Bytes smsAlert() { return {0xC1, 0x01, 0x01, 0x01}; }
+Bytes callAlert() { return {0xC1, 0x01, 0x06, 0x00}; }
+Bytes callEnd() { return {0xC1, 0x00, 0x00, 0x00}; }
+
+Bytes messageSwitchesRead() { return {0xAD, 0x02}; }
+
+Bytes messageSwitchesWrite(const MessageSwitches& m) {
+  Bytes b{0xAD, 0x01};
+  b.insert(b.end(), m.state.begin(), m.state.end());
+  return b;
+}
+
+std::optional<MessageSwitches> decodeMessageSwitches(std::span<const uint8_t> v) {
+  MessageSwitches m;
+  if (v.size() < 2 + m.state.size() || v[0] != 0xAD) return std::nullopt;
+  std::copy_n(v.begin() + 2, m.state.size(), m.state.begin());
+  return m;
+}
+
+namespace {
+
+std::vector<Bytes> contentPackets(std::string_view text, MessageType type, uint8_t flag) {
   constexpr size_t kChunk = 14;
   constexpr size_t kMaxPackets = 255;
   text = text.substr(0, kChunk * kMaxPackets);
@@ -149,12 +170,22 @@ std::vector<Bytes> messagePackets(std::string_view text, MessageType type) {
             static_cast<uint8_t>(chunk.size()),
             static_cast<uint8_t>(total),
             static_cast<uint8_t>(i + 1),
-            0x02};
+            flag};
     p.insert(p.end(), chunk.begin(), chunk.end());
     p.resize(20, 0);
     packets.push_back(std::move(p));
   }
   return packets;
+}
+
+} // namespace
+
+std::vector<Bytes> messagePackets(std::string_view text, MessageType type) {
+  return contentPackets(text, type, 0x02);
+}
+
+std::vector<Bytes> callerPackets(std::string_view name) {
+  return contentPackets(name, MessageType::Call, 0x01);
 }
 
 Bytes sedentaryRead() { return {0xE1, 0, 0, 0, 0, 0, 0x02}; }

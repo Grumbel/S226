@@ -123,6 +123,22 @@ int main() {
   CHECK(msg.size() == 2 && msg[0][2] == 14 && msg[0][3] == 2 && msg[0][4] == 1 &&
         msg[1][2] == 3 && msg[1][4] == 2 && msg[1][6] == 'e' && msg[1].size() == 20);
 
+  msg = callerPackets("Alice");
+  CHECK(msg.size() == 1 && msg[0] == Bytes({0xc2, 0x00, 0x05, 0x01, 0x01, 0x01, 'A', 'l', 'i', 'c',
+                                            'e', 0, 0, 0, 0, 0, 0, 0, 0, 0}));
+  msg = messagePackets("Hello SMS", MessageType::Sms);
+  CHECK(msg.size() == 1 && msg[0][1] == 0x01 && msg[0][2] == 9);
+
+  // 0xAD switch table as pushed after the bind
+  auto sw = decodeMessageSwitches(Bytes{0xad, 0x02, 0x02, 0x02, 0x02, 0x02, 0x00, 0x02, 0x01, 0x00,
+                                        0x02, 0x02, 0x02, 0x01, 0x01, 0x02, 0x02, 0x00, 0x00, 0x01});
+  CHECK(sw && sw->state[0] == MessageSwitches::Off && sw->state[1] == MessageSwitches::Off &&
+        sw->state[4] == MessageSwitches::Unsupported && sw->state[17] == MessageSwitches::On);
+  sw->state[0] = sw->state[1] = MessageSwitches::On;
+  auto swWrite = messageSwitchesWrite(*sw);
+  CHECK(swWrite.size() == 20 && swWrite[0] == 0xad && swWrite[1] == 0x01 && swWrite[2] == 0x01 &&
+        swWrite[3] == 0x01 && swWrite[19] == 0x01);
+
   CHECK(historyRead(1) == Bytes({0xd1, 0x01, 0x00, 0x01}));
   auto slot = decodeHistorySlot(Bytes{0xd1, 0x0d, 0x00, 0x20, 0x01, 0x21, 0x00, 0x00, 0x00, 0x00,
                                       0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x49, 0x01, 0x05});
