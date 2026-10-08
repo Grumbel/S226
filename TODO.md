@@ -2,24 +2,21 @@
 
 ## Current tip
 
-- Repo tip: (see latest commit)
 - Work-line base: `94f9363`
-- Latest bundle: see artifacts `s226-009…`
+- See latest bundle in artifacts (`s226-010…`).
 
 ## Done in this sequence
 
 1. WatchBridge request / requestStream API
-2. Tabbed s226-hr GUI with full CLI feature set:
-   Live, Settings, Alarms, Notify, History, Workouts
-3. Man page + README updated for the tabs
-4. Removed outdated "settings not implemented" from README open questions
+2. Tabbed s226-hr GUI (Live, Settings, Alarms, Notify, History, Workouts)
+3. Man page + README + AppStream for the tabs
+4. Alarm add/edit dialog with weekday checkboxes (All / Clear; empty = once)
 
-## Optional follow-ups
+## Optional / user-side
 
-- Richer alarm weekday picker (day checkboxes instead of daily-only add)
 - Hardware smoke-test
-- AppStream description could mention tabs if desired
+- Further UI polish as needed
 
 ## Protocol gaps (unchanged)
 
-- 0xA7 dump meaning; D1 bytes 14-16/18; fee7/HID role
+- 0xA7 dump; D1 bytes 14-16/18; fee7/HID role

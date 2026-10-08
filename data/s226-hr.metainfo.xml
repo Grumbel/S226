@@ -4,7 +4,7 @@
   <metadata_license>CC0-1.0</metadata_license>
 
   <name>S226 Heart Rate</name>
-  <summary>Live heart rate and step cadence from the S226 watch</summary>
+  <summary>Heart rate, settings and activity from the S226 watch</summary>
 
   <developer>
     <name>Ingo Ruhnke</name>
@@ -12,16 +12,18 @@
 
   <description>
     <p>
-      Shows the heart rate measured by an S226 (H-Band / Veepoo) fitness
-      watch as a large number that fills the window, together with
-      today's step count and the current walking cadence in steps per
-      minute.
+      Connects to an S226 (H-Band / Veepoo) fitness watch over Bluetooth
+      LE and exposes the watch through tabs: live heart rate and cadence,
+      settings, alarms, notifications, activity history and sport-mode
+      workouts.
     </p>
     <ul>
-      <li>Optional metronome that clicks along with the heart rate</li>
+      <li>Large live heart-rate display with optional metronome</li>
       <li>Graph of heart rate and cadence over 1 minute to 2 hours</li>
-      <li>Every reading is logged to a daily CSV file</li>
+      <li>Daily CSV log of every reading</li>
       <li>On-demand blood-pressure measurement</li>
+      <li>Read and change watch settings, alarms and message types</li>
+      <li>Fetch 5-minute activity history and sport-mode workouts</li>
     </ul>
     <p>
       The app talks to a USB Bluetooth controller directly over raw HCI
