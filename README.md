@@ -22,14 +22,19 @@ connect as soon as they see it.
 
 ## s226-hr
 
+The window is organised as **tabs**. The toolbar always has controller
+selection, watch address and Connect.
+
+**Live** (default tab)
+
 - **Heart rate** as a big number that scales with the window. The watch
   ends a measurement after ~30-50 s; the app restarts it automatically.
 - **Steps today** and **cadence** in steps per minute (spm). The cadence
   is measured between the moments the watch's step counter changes
   (polled every second), so it follows the watch's own update rate and
   drops to 0 when you stop.
-- **Graph** of bpm and spm over 1 min to 2 h (pick the span in the
-  toolbar; hover for exact values).
+- **Graph** of bpm and spm over 1 min to 2 h (pick the span; hover for
+  exact values).
 - **Log**: every reading is appended to one CSV file per day,
   `~/.local/share/s226/s226-hr/s226-hr-YYYY-MM-DD.csv` (columns
   `time,bpm,spm`). The graph is refilled from it on restart.
@@ -38,11 +43,26 @@ connect as soon as they see it.
 - **Blood pressure** measurement on demand.
 - The status bar shows the watch's **battery** (hover for the firmware
   version).
-- Connects on start (`--no-connect` to skip) and reconnects when the
-  watch drops out.
-- Connects to any S226 by default. To use one particular watch, pick or
-  type its address in the **Watch** field (or pass `--address`).
-  Watches you have connected to before are listed there.
+
+**Settings** — sedentary reminder, heart-rate alarm, screen-on time,
+brightness, countdown preset, watch face, personal data, feature toggles
+(metric, 24h, auto-HR, stopwatch, …) and which message types the watch
+shows. Refresh / Apply.
+
+**Alarms** — list, add, edit and delete the alarms stored on the watch.
+
+**Notify** — send a text message (with type) or show an incoming-call
+screen.
+
+**History** — fetch the watch's 5-minute activity slots for today or a
+previous day.
+
+**Workouts** — sport-mode sessions with per-minute detail.
+
+Connects on start (`--no-connect` to skip) and reconnects when the
+watch drops out. Connects to any S226 by default; pick or type an
+address in the **Watch** field (or pass `--address`). Watches you have
+connected to before are listed there.
 
 Keys: **F11** / **Esc** full screen, **M** metronome, **Ctrl+L** log
 panel, **Ctrl+Q** quit. Details are in `man s226-hr`.
@@ -258,4 +278,3 @@ those UUIDs. They say nothing about who made the watch.
 - Meaning of the post-bind `0xA7` dump (`0xAD` and `0xB8` are decoded)
 - `0xD1` history bytes 14-16 and 18; `0xD3` reply
 - Role of the `fee7` and HID services
-- Settings not implemented yet: `b1` brightness schedule, `b9` alarms, `b2` countdown, `c7` screen style

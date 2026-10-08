@@ -2,39 +2,24 @@
 
 ## Current tip
 
-- Repo tip: `bbcdbcb` (Add tabbed GUI exposing full CLI feature set in s226-hr)
-- Work-line base (for bundle ranges): `94f9363`
-- Branch: master
-- Version: 0.2.0-dev
-- Latest bundle: `/home/workdir/artifacts/s226-007.1-tabbed-gui-full-features-94f9363.bundle`
-  (range 94f9363..bbcdbcb)
+- Repo tip: (see latest commit)
+- Work-line base: `94f9363`
+- Latest bundle: see artifacts `s226-009…`
 
-## Goal (done)
+## Done in this sequence
 
-Full feature set from s226-cli integrated into s226-hr via tabs.
+1. WatchBridge request / requestStream API
+2. Tabbed s226-hr GUI with full CLI feature set:
+   Live, Settings, Alarms, Notify, History, Workouts
+3. Man page + README updated for the tabs
+4. Removed outdated "settings not implemented" from README open questions
 
-### UI
+## Optional follow-ups
 
-Global toolbar: Controller, Watch, Connect, Log, Full screen.
+- Richer alarm weekday picker (day checkboxes instead of daily-only add)
+- Hardware smoke-test
+- AppStream description could mention tabs if desired
 
-Central `QTabWidget`:
+## Protocol gaps (unchanged)
 
-1. **Live** — BPM view, trend graph, steps/cadence, metronome, BP
-2. **Settings** — sedentary, HR alarm, screen-on, brightness, countdown, watch face, person, features, message switches; Refresh / Apply
-3. **Alarms** — list / add / edit / delete
-4. **Notify** — message + type, incoming call / end call
-5. **History** — day selector, fetch 5-min slots table
-6. **Workouts** — fetch sport-mode sessions with per-minute detail
-
-### Bridge
-
-WatchBridge: `request`, `requestStream`, `send`, `connectedChanged`, cancel on disconnect.
-
-## Session notes
-
-- Implementation complete; user should build/test with real hardware.
-- Optional follow-up: man page / README note about the tabs; richer alarm weekday picker.
-
-## Next actions
-
-- Build and smoke-test on hardware (`nix build` / `nix run .#s226-hr`).
+- 0xA7 dump meaning; D1 bytes 14-16/18; fee7/HID role

@@ -1,4 +1,4 @@
-.TH S226-HR 1 2026-10-02 "s226" "User Commands"
+.TH S226-HR 1 2026-10-09 "s226" "User Commands"
 .SH NAME
 s226-hr \- live heart-rate display for the S226 fitness watch
 .SH SYNOPSIS
@@ -13,11 +13,18 @@ s226-hr \- live heart-rate display for the S226 fitness watch
 .SH DESCRIPTION
 .B s226-hr
 connects to an S226 (H-Band / Veepoo) fitness watch over Bluetooth Low
-Energy and shows the heart rate the watch measures as a large number
-that scales with the window.
-Below it are today's step count and the walking cadence in steps per
-minute (spm), and a graph of heart rate and cadence over a selectable
-time span.
+Energy.
+The main window is organised as tabs for the different areas of the
+watch; the toolbar always holds controller selection, watch address,
+Connect and the log panel.
+.PP
+The
+.B Live
+tab shows the heart rate as a large number that scales with the window,
+today's step count and walking cadence in steps per minute (spm), and a
+graph of heart rate and cadence over a selectable time span.
+Optionally a metronome clicks along with the heart rate.
+A blood-pressure measurement can be started from the Live tab.
 .PP
 The watch ends a heart-rate measurement on its own after 30 to 50
 seconds; the program restarts it automatically.
@@ -35,11 +42,15 @@ A watch shows the last two bytes of its address.
 The cadence is measured between the moments the watch's step counter
 changes, so it follows the watch's own update rate.
 It reads 0 once the counter stops changing.
-.PP
-Optionally a metronome clicks along with the heart rate.
-A blood-pressure measurement can be started from the toolbar.
 The status bar shows the watch's battery charge; its tooltip shows the
 firmware version.
+.PP
+Further tabs (enabled only while connected) expose the rest of the
+watch: settings, alarms, notifications, activity history and sport-mode
+workouts.
+See
+.B TABS
+below.
 .PP
 The program does not use BlueZ.
 It drives a USB Bluetooth controller directly over raw HCI and detaches
@@ -125,6 +136,37 @@ The kernel adapter currently backed by that controller.
 .PP
 Controllers are recognised by their Bluetooth HCI USB interface
 (class e0, subclass 01, protocol 01), not by their name.
+.SH TABS
+.TP
+.B Live
+Heart rate, steps, cadence, graph, metronome and blood-pressure control.
+Readings are logged to a daily CSV file (see
+.BR FILES ).
+.TP
+.B Settings
+Read and write the watch configuration: sedentary reminder, heart-rate
+alarm, screen-on time, brightness, countdown preset, watch face, personal
+data, feature toggles (metric, 24h, auto-HR, stopwatch, and so on) and
+which message types the watch displays.
+Use
+.B Refresh
+to load current values and
+.B Apply
+to write them.
+.TP
+.B Alarms
+List the alarms stored on the watch; add, edit or delete entries.
+.TP
+.B Notify
+Send a text message to the watch (choose the message type) or show an
+incoming-call screen with a caller name.
+.TP
+.B History
+Fetch the watch's 5-minute activity slots for today or a previous day
+(steps, distance, calories, activity value, average heart rate).
+.TP
+.B Workouts
+Fetch sport-mode sessions stored on the watch, with per-minute detail.
 .SH KEYS
 .TP
 .B F11
