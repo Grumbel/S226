@@ -9,8 +9,12 @@ qt_add_executable(s226-hr
   watch_bridge.cpp
   measurement_log.cpp
   trend_graph.cpp
+  settings_tab.cpp
+  alarms_tab.cpp
+  notify_tab.cpp
+  history_tab.cpp
+  workouts_tab.cpp
 )
-# Window icon when the icon theme does not provide it (uninstalled runs).
 qt_add_resources(s226-hr icons
   PREFIX /
   BASE ../data/icons

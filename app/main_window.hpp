@@ -18,6 +18,12 @@ class QLabel;
 class QPlainTextEdit;
 class QPushButton;
 class QSlider;
+class QTabWidget;
+class SettingsTab;
+class AlarmsTab;
+class NotifyTab;
+class HistoryTab;
+class WorkoutsTab;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -37,7 +43,7 @@ private:
   void buildUi();
   void refreshControllers();
   QString selectedController() const;
-  QString selectedWatch() const; // "" = any S226
+  QString selectedWatch() const;
   void rememberWatch(const QString& address);
   void onStateChanged(s226::WatchState state, const QString& detail);
   void onHeartRate(int bpm);
@@ -46,10 +52,12 @@ private:
   void loadHistory();
   void appendLog(const QString& line);
   void toggleFullScreen();
+  void setTabsEnabled(bool connected);
 
   WatchBridge bridge_;
   Metronome metronome_;
 
+  QTabWidget* tabs_ = nullptr;
   BpmView* view_ = nullptr;
   TrendGraph* graph_ = nullptr;
   QComboBox* graphWindowBox_ = nullptr;
@@ -63,6 +71,12 @@ private:
   QLabel* batteryLabel_ = nullptr;
   QDockWidget* logDock_ = nullptr;
   QPlainTextEdit* logView_ = nullptr;
+
+  SettingsTab* settingsTab_ = nullptr;
+  AlarmsTab* alarmsTab_ = nullptr;
+  NotifyTab* notifyTab_ = nullptr;
+  HistoryTab* historyTab_ = nullptr;
+  WorkoutsTab* workoutsTab_ = nullptr;
 
   QString controllerOverride_;
   s226::WatchState state_ = s226::WatchState::Stopped;

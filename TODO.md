@@ -2,39 +2,37 @@
 
 ## Current tip
 
-- Repo tip: `b39a43f` (Sync TODO.md to final tip …)
-- Work-line base (for bundle ranges): `94f9363`
-- Branch: master
-- Version: 0.2.0-dev
-- Latest bundle: `/home/workdir/artifacts/s226-006.1-init-agents-todo-94f9363.bundle`
-  (range 94f9363..HEAD; supersedes all earlier bundles in this sequence)
+- Work-line base: `94f9363`
+- See latest bundle in artifacts.
 
-## Open work / known gaps (from README / PROTOCOL)
+## Goal
 
-Protocol / reverse engineering still open:
+Full feature set from s226-cli integrated into s226-hr via tabs.
 
-- Meaning of the post-bind `0xA7` dump (`0xAD` and `0xB8` are decoded)
-- `0xD1` history bytes 14-16 and 18; `0xD3` reply layout; workout header bytes 33-38
-- Role of the `fee7` and HID services
-- Trailing status byte in 0xD0 / 0x90 frames
-- Message display time fixed at ~5 s
-- Alarm (`b1` / `b9`) and countdown exact layouts
-- Notification (ANCS-style) path
-- `f002` secondary channel role (raw PPG samples while measuring)
-- Settings not fully implemented: brightness schedule, alarms, countdown, screen style (`c7`)
+### UI (done in this sequence)
 
-Code / product:
+Global toolbar: Controller, Watch, Connect, Log, Full screen.
 
-- Distance/calories intentionally omitted from GUI (watch estimates).
-- Python tools are research-only; production path is C++ + raw HCI.
+Central `QTabWidget`:
+
+1. **Live** — BPM view, trend graph, steps/cadence, metronome, BP
+2. **Settings** — sedentary, HR alarm, screen-on, brightness, countdown, watch face, person, features, message switches; Refresh / Apply
+3. **Alarms** — list / add / edit / delete
+4. **Notify** — message + type, incoming call / end call
+5. **History** — day selector, fetch 5-min slots table
+6. **Workouts** — fetch sport-mode sessions with per-minute detail
+
+### Bridge
+
+WatchBridge: `request`, `requestStream`, `send`, `connectedChanged`, cancel on disconnect.
 
 ## Session notes
 
-- Initial checkout: shallow then unshallowed; 52 commits on master at start.
-- Created `AGENTS.md` and `TODO.md` for continuity (they were missing from upstream).
-- This sequence only added documentation; no code changes.
-- Bundle series: s226-00N.1-init-agents-todo-94f9363.bundle (keep only the latest).
+- Sandbox wipes `/tmp` frequently; work under `/home/workdir/s226`.
+- Implementation complete; user should build/test with real hardware.
+- Man page / README still need a short update for the new tabs (optional follow-up).
 
 ## Next actions
 
-(None assigned yet — provide a concrete task.)
+- Build and smoke-test on hardware.
+- Optional: polish alarm day-of-week UI, README/man page.

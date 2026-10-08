@@ -6,30 +6,39 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDockWidget>
+#include <QHBoxLayout>
+#include <QIcon>
+#include <QKeySequence>
 #include <QLabel>
-#include <QLocale>
 #include <QLineEdit>
+#include <QLocale>
 #include <QPlainTextEdit>
-#include <QRegularExpression>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QShortcut>
+#include <QSizePolicy>
 #include <QSlider>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "alarms_tab.hpp"
 #include "bpm_view.hpp"
+#include "history_tab.hpp"
+#include "notify_tab.hpp"
+#include "settings_tab.hpp"
 #include "trend_graph.hpp"
+#include "workouts_tab.hpp"
 #include "s226/usb.hpp"
 
 namespace {
 
 constexpr int kStaleMs = 6000;
 constexpr int kMaxKnownWatches = 8;
-// Bump when the toolbar layout changes so stale saved layouts are ignored.
-constexpr int kWindowStateVersion = 2;
+constexpr int kWindowStateVersion = 3;
 
 bool isAddress(const QString& s) {
   static const QRegularExpression re(QStringLiteral("^([0-9A-F]{2}:){5}[0-9A-F]{2}$"));
@@ -71,7 +80,6 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
     bpRunning_ = false;
     bpButton_->setText(tr("Blood pressure"));
   });
-
   connect(&bridge_, &WatchBridge::deviceInfo, this, [this](int number, const QString& fw) {
     appendLog(tr("Watch firmware %1, device number %2").arg(fw).arg(number));
     batteryLabel_->setToolTip(tr("Firmware %1, device number %2").arg(fw).arg(number));
@@ -80,7 +88,6 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
     batteryLabel_->setText(percent >= 0 ? tr("Battery %1%").arg(percent)
                                         : tr("Battery %1/4").arg(level));
   });
-
   connect(&bridge_, &WatchBridge::steps, this, [this](quint32 steps) {
     steps_ = steps;
     haveSteps_ = true;
@@ -121,16 +128,80 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
 MainWindow::~MainWindow() = default;
 
 void MainWindow::buildUi() {
-  auto* central = new QWidget(this);
-  auto* layout = new QVBoxLayout(central);
-  layout->setContentsMargins(0, 0, 0, 0);
-  layout->setSpacing(0);
-  view_ = new BpmView(central);
-  graph_ = new TrendGraph(central);
-  layout->addWidget(view_, 3);
-  layout->addWidget(graph_, 1);
-  setCentralWidget(central);
+  tabs_ = new QTabWidget(this);
+  setCentralWidget(tabs_);
 
+  // Live tab
+  auto* live = new QWidget(tabs_);
+  auto* liveLay = new QVBoxLayout(live);
+  liveLay->setContentsMargins(0, 0, 0, 0);
+  liveLay->setSpacing(0);
+  view_ = new BpmView(live);
+  graph_ = new TrendGraph(live);
+  liveLay->addWidget(view_, 3);
+  liveLay->addWidget(graph_, 1);
+
+  auto* liveBar = new QWidget(live);
+  auto* liveBarLay = new QHBoxLayout(liveBar);
+  liveBarLay->setContentsMargins(8, 4, 8, 4);
+
+  metronomeBox_ = new QCheckBox(tr("&Metronome"), liveBar);
+  metronomeBox_->setToolTip(tr("Click along with the heart rate (M)"));
+  connect(metronomeBox_, &QCheckBox::toggled, &metronome_, &Metronome::setSoundEnabled);
+  liveBarLay->addWidget(metronomeBox_);
+
+  volumeSlider_ = new QSlider(Qt::Horizontal, liveBar);
+  volumeSlider_->setRange(0, 100);
+  volumeSlider_->setFixedWidth(100);
+  volumeSlider_->setToolTip(tr("Metronome volume"));
+  connect(volumeSlider_, &QSlider::valueChanged, this,
+          [this](int v) { metronome_.setVolume(v / 100.0); });
+  liveBarLay->addWidget(volumeSlider_);
+  liveBarLay->addSpacing(12);
+
+  bpButton_ = new QPushButton(tr("Blood pressure"), liveBar);
+  bpButton_->setToolTip(tr("Start a blood-pressure measurement on the watch"));
+  connect(bpButton_, &QPushButton::clicked, this, [this] {
+    if (bpRunning_) {
+      bridge_.stopBloodPressure();
+      bpRunning_ = false;
+      bpButton_->setText(tr("Blood pressure"));
+      view_->setSecondary({});
+    } else {
+      bridge_.startBloodPressure();
+      bpRunning_ = true;
+      bpButton_->setText(tr("Stop BP"));
+      view_->setSecondary(tr("Blood pressure..."));
+    }
+  });
+  liveBarLay->addWidget(bpButton_);
+  liveBarLay->addSpacing(12);
+
+  liveBarLay->addWidget(new QLabel(tr("Graph:"), liveBar));
+  graphWindowBox_ = new QComboBox(liveBar);
+  for (int minutes : {1, 5, 15, 30, 60, 120})
+    graphWindowBox_->addItem(tr("%1 min").arg(minutes), minutes * 60);
+  graphWindowBox_->setToolTip(tr("Time span shown in the graph"));
+  connect(graphWindowBox_, &QComboBox::currentIndexChanged, this, [this] {
+    graph_->setWindowSeconds(graphWindowBox_->currentData().toInt());
+  });
+  liveBarLay->addWidget(graphWindowBox_);
+  liveBarLay->addStretch(1);
+  liveLay->addWidget(liveBar);
+  tabs_->addTab(live, tr("Live"));
+
+  settingsTab_ = new SettingsTab(bridge_, tabs_);
+  tabs_->addTab(settingsTab_, tr("Settings"));
+  alarmsTab_ = new AlarmsTab(bridge_, tabs_);
+  tabs_->addTab(alarmsTab_, tr("Alarms"));
+  notifyTab_ = new NotifyTab(bridge_, tabs_);
+  tabs_->addTab(notifyTab_, tr("Notify"));
+  historyTab_ = new HistoryTab(bridge_, tabs_);
+  tabs_->addTab(historyTab_, tr("History"));
+  workoutsTab_ = new WorkoutsTab(bridge_, tabs_);
+  tabs_->addTab(workoutsTab_, tr("Workouts"));
+
+  // Connection toolbar
   auto* bar = addToolBar(tr("Connection"));
   bar->setObjectName("mainToolBar");
   bar->setMovable(false);
@@ -147,6 +218,7 @@ void MainWindow::buildUi() {
   refresh->setToolTip(tr("Look for USB Bluetooth controllers again"));
   connect(refresh, &QToolButton::clicked, this, &MainWindow::refreshControllers);
   bar->addWidget(refresh);
+
   bar->addWidget(new QLabel(tr("Watch:"), bar));
   watchBox_ = new QComboBox(bar);
   watchBox_->setEditable(true);
@@ -157,71 +229,16 @@ void MainWindow::buildUi() {
   watchBox_->setToolTip(
       tr("Connect to any S226, or only to the watch with this Bluetooth address.\n"
          "Watches connected before are listed; the watch shows the last two bytes."));
-  for (const QString& a : QSettings().value("knownWatches").toStringList()) {
+  for (const QString& a : QSettings().value("knownWatches").toStringList())
     if (isAddress(a)) watchBox_->addItem(a, a);
-  }
   bar->addWidget(watchBox_);
-
 
   connectButton_ = new QPushButton(tr("Connect"), bar);
   connect(connectButton_, &QPushButton::clicked, this, [this] {
-    if (active_) {
-      disconnectWatch();
-    } else {
-      connectWatch();
-    }
+    if (active_) disconnectWatch();
+    else connectWatch();
   });
   bar->addWidget(connectButton_);
-
-  // Second row: display controls, so nothing ends up in the overflow menu.
-  addToolBarBreak();
-  bar = addToolBar(tr("Display"));
-  bar->setObjectName("displayToolBar");
-  bar->setMovable(false);
-
-  metronomeBox_ = new QCheckBox(tr("&Metronome"), bar);
-  metronomeBox_->setToolTip(tr("Click along with the heart rate (M)"));
-  connect(metronomeBox_, &QCheckBox::toggled, &metronome_, &Metronome::setSoundEnabled);
-  bar->addWidget(metronomeBox_);
-
-  volumeSlider_ = new QSlider(Qt::Horizontal, bar);
-  volumeSlider_->setRange(0, 100);
-  volumeSlider_->setFixedWidth(100);
-  volumeSlider_->setToolTip(tr("Metronome volume"));
-  connect(volumeSlider_, &QSlider::valueChanged, this,
-          [this](int v) { metronome_.setVolume(v / 100.0); });
-  bar->addWidget(volumeSlider_);
-  bar->addSeparator();
-
-  bpButton_ = new QPushButton(tr("Blood pressure"), bar);
-  bpButton_->setToolTip(tr("Start a blood-pressure measurement on the watch"));
-  connect(bpButton_, &QPushButton::clicked, this, [this] {
-    if (bpRunning_) {
-      bridge_.stopBloodPressure();
-      bpRunning_ = false;
-      bpButton_->setText(tr("Blood pressure"));
-      view_->setSecondary({});
-    } else {
-      bridge_.startBloodPressure();
-      bpRunning_ = true;
-      bpButton_->setText(tr("Stop BP"));
-      view_->setSecondary(tr("Blood pressure..."));
-    }
-  });
-  bar->addWidget(bpButton_);
-
-  bar->addSeparator();
-  bar->addWidget(new QLabel(tr("Graph:"), bar));
-  graphWindowBox_ = new QComboBox(bar);
-  for (int minutes : {1, 5, 15, 30, 60, 120}) {
-    graphWindowBox_->addItem(minutes < 60 ? tr("%1 min").arg(minutes) : tr("%1 h").arg(minutes / 60),
-                             minutes * 60);
-  }
-  graphWindowBox_->setToolTip(tr("Time span shown in the graph"));
-  connect(graphWindowBox_, &QComboBox::currentIndexChanged, this, [this] {
-    graph_->setWindowSeconds(graphWindowBox_->currentData().toInt());
-  });
-  bar->addWidget(graphWindowBox_);
 
   auto* spacer = new QWidget(bar);
   spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -262,12 +279,19 @@ void MainWindow::buildUi() {
   statusBar()->addPermanentWidget(batteryLabel_);
 }
 
+void MainWindow::setTabsEnabled(bool connected) {
+  settingsTab_->setConnected(connected);
+  alarmsTab_->setConnected(connected);
+  notifyTab_->setConnected(connected);
+  historyTab_->setConnected(connected);
+  workoutsTab_->setConnected(connected);
+}
+
 void MainWindow::refreshControllers() {
   QSettings settings;
   const QString wanted = controllerOverride_.isEmpty()
                              ? settings.value("controller", "auto").toString()
                              : controllerOverride_;
-
   controllerBox_->clear();
   controllerBox_->addItem(tr("Automatic"), QStringLiteral("auto"));
   const auto controllers = s226::listUsbControllers();
@@ -283,13 +307,10 @@ void MainWindow::refreshControllers() {
                  c.kernelDriver.empty() ? tr("none") : QString::fromStdString(c.kernelDriver)),
         Qt::ToolTipRole);
     if (QString::fromStdString(c.portPath) == wanted ||
-        QString::fromStdString(c.vidPid()) == wanted) {
+        QString::fromStdString(c.vidPid()) == wanted)
       controllerBox_->setCurrentIndex(idx);
-    }
   }
-  if (controllers.empty()) {
-    appendLog(tr("No USB Bluetooth controller found."));
-  }
+  if (controllers.empty()) appendLog(tr("No USB Bluetooth controller found."));
 }
 
 QString MainWindow::selectedWatch() const {
@@ -310,9 +331,8 @@ void MainWindow::rememberWatch(const QString& address) {
 }
 
 QString MainWindow::selectedController() const {
-  if (!controllerOverride_.isEmpty() && controllerBox_->currentIndex() <= 0) {
+  if (!controllerOverride_.isEmpty() && controllerBox_->currentIndex() <= 0)
     return controllerOverride_;
-  }
   return controllerBox_->currentData().toString();
 }
 
@@ -327,30 +347,30 @@ void MainWindow::connectWatch() {
   }
   active_ = true;
   QSettings().setValue("watch", watch);
-  QSettings().setValue("controller", controllerBox_->currentData().toString());
-  appendLog(tr("Starting (controller: %1, watch: %2)")
-                .arg(selectedController(), watch.isEmpty() ? tr("any S226") : watch));
+  QSettings().setValue("controller", selectedController());
+  connectButton_->setText(tr("Disconnect"));
+  controllerBox_->setEnabled(false);
+  watchBox_->setEnabled(false);
   bridge_.start(selectedController(), watch);
-  onStateChanged(s226::WatchState::OpeningController, {});
 }
 
 void MainWindow::disconnectWatch() {
-  bridge_.stop(); // emits Stopped
+  if (!active_) return;
   active_ = false;
+  bridge_.stop();
+  connectButton_->setText(tr("Connect"));
+  controllerBox_->setEnabled(true);
+  watchBox_->setEnabled(true);
+  setTabsEnabled(false);
 }
 
 void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   state_ = state;
   const QString text = stateText(state, detail);
   stateLabel_->setText(text);
-  if (state == s226::WatchState::Error || state == s226::WatchState::Stopped) {
-    active_ = false;
-  }
-  connectButton_->setText(active_ ? tr("Disconnect") : tr("Connect"));
-  controllerBox_->setEnabled(!active_);
-  watchBox_->setEnabled(!active_);
-  if (state == s226::WatchState::Connected) rememberWatch(detail);
-  bpButton_->setEnabled(state == s226::WatchState::Connected);
+  const bool connected = (state == s226::WatchState::Connected);
+  setTabsEnabled(connected);
+  if (connected && !detail.isEmpty()) rememberWatch(detail);
   if (state != s226::WatchState::Connected) {
     batteryLabel_->clear();
     stepRate_.reset();
@@ -397,9 +417,8 @@ void MainWindow::updateActivity() {
     return;
   }
   QString text = tr("%1 steps").arg(QLocale().toString(steps_));
-  if (auto spm = stepRate_.stepsPerMinute()) {
+  if (auto spm = stepRate_.stepsPerMinute())
     text += tr("  \u00B7  %1 spm").arg(qRound(*spm));
-  }
   view_->setActivity(text);
 }
 
@@ -417,11 +436,8 @@ void MainWindow::appendLog(const QString& line) {
 }
 
 void MainWindow::toggleFullScreen() {
-  if (isFullScreen()) {
-    showNormal();
-  } else {
-    showFullScreen();
-  }
+  if (isFullScreen()) showNormal();
+  else showFullScreen();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
