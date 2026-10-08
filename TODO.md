@@ -2,12 +2,12 @@
 
 ## Current tip
 
-- Repo tip: `081b511` (Update TODO.md to tip 96a0bda and bundle 002)
+- Repo tip: `3819f36` (Finalize TODO.md for tip 081b511 and bundle 003)
 - Work-line base (for bundle ranges): `94f9363`
 - Branch: master
 - Version: 0.2.0-dev
-- Latest bundle: `/home/workdir/artifacts/s226-003.1-init-agents-todo-94f9363.bundle`
-  (contains 94f9363..081b511; supersedes prior 001/002)
+- Latest bundle: `/home/workdir/artifacts/s226-005.1-init-agents-todo-94f9363.bundle`
+  (contains 94f9363..3819f36; supersedes prior)
 
 ## Open work / known gaps (from README / PROTOCOL)
 
@@ -32,11 +32,12 @@ Code / product:
 
 - Initial checkout: shallow then unshallowed; 52 commits on master.
 - Created `AGENTS.md` and this `TODO.md` for continuity (they were missing).
-- Commits in this sequence:
+- Commits in this sequence (all from base `94f9363`):
   - `3445c39` Add AGENTS.md and TODO.md for agent continuity
   - `96a0bda` Update TODO.md with current tip and first bundle
   - `081b511` Update TODO.md to tip 96a0bda and bundle 002
-- Produced superseding bundle `s226-003.1-init-agents-todo-94f9363.bundle`.
+  - `3819f36` Finalize TODO.md for tip 081b511 and bundle 003
+- Produced superseding bundle `s226-005.1-init-agents-todo-94f9363.bundle`.
 - No functional changes yet; waiting for a concrete task.
 
 ## Next actions
