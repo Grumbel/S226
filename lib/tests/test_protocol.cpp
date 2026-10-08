@@ -242,6 +242,32 @@ int main() {
   auto u = uuidToAtt(kNotifyUuid);
   CHECK(u[0] == 0x00 && u[15] == 0xF0 && u[14] == 0x08 && u[13] == 0x00 && u[12] == 0x02);
 
+  // Music control notifications (watch → phone)
+  auto next = decodeMusicControl(frame({0x01, 0x01, 0x01, 0x01}));
+  CHECK(next && *next == MusicAction::Next);
+  auto pp = decodeMusicControl(frame({0x01, 0x01, 0x01, 0x02}));
+  CHECK(pp && *pp == MusicAction::PlayPause);
+  auto prev = decodeMusicControl(frame({0x01, 0x01, 0x01, 0x04}));
+  CHECK(prev && *prev == MusicAction::Previous);
+  CHECK(!decodeMusicControl(frame({0x01, 0x02, 0x01, 0x01}))); // PTT, not music
+  CHECK(!decodeMusicControl(frame({0xd0, 0x48})));
+
+  // Now-playing packets (phone → watch)
+  NowPlaying np;
+  np.title = "Test Track";
+  np.artist = "An Artist";
+  np.album = "Album";
+  np.playing = true;
+  np.volume = 75;
+  auto musicPkts = nowPlayingPackets(np);
+  CHECK(!musicPkts.empty());
+  CHECK(musicPkts[0].size() == 20);
+  CHECK(musicPkts[0][0] == 0x99 && musicPkts[0][1] == 0x01);
+  CHECK(musicPkts[0][2] == 0x01); // first package index
+  CHECK(musicPkts[0][3] == static_cast<uint8_t>(musicPkts.size()));
+  // Inner stream starts with F0 after the 4-byte header
+  CHECK(musicPkts[0][4] == 0xF0);
+
   if (failures == 0) std::puts("all protocol checks passed");
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -87,6 +87,7 @@ s226-cli --messages call,sms,other --notify-type sms --notify "Hi"
 s226-cli --call "Alice"                 # incoming-call screen
 s226-cli --feature stopwatch=off        # watch features, see --settings
 s226-cli -v --send "a0 00"              # raw command, prints the replies
+s226-cli --music "Title/Artist/Album"  # now-playing on the watch
 ```
 
 Distance and calories are left out of the GUI on purpose: the watch reports them,

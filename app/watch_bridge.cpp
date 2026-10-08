@@ -42,6 +42,9 @@ WatchBridge::WatchBridge(QObject* parent) : QObject(parent) {
   ev.rawNotification = [this](const s226::protocol::Bytes& value) {
     toGui([this, value] { onRawNotification(value); });
   };
+  ev.musicControl = [this](s226::protocol::MusicAction a) {
+    toGui([this, a] { emit musicControl(a); });
+  };
   watch_ = std::make_unique<s226::Watch>(std::move(ev));
 }
 

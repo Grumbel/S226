@@ -482,6 +482,10 @@ struct Watch::Impl {
 
   void onNotification(const Bytes& value) {
     if (ev.rawNotification) ev.rawNotification(value);
+    if (auto music = protocol::decodeMusicControl(value)) {
+      if (ev.musicControl) ev.musicControl(*music);
+      return;
+    }
     if (auto hr = protocol::decodeHeartRate(value)) {
       if (!hrWanted) return; // watch keeps streaming a while after d0 00
       if (hr->sessionEnded) {

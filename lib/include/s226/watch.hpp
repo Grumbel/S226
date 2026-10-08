@@ -51,6 +51,8 @@ struct WatchEvents {
   // Read after connecting and once a minute.
   std::function<void(const protocol::Battery&)> battery;
   std::function<void(const std::string&)> log;
+  // Media keys from the watch (next / play-pause / previous).
+  std::function<void(protocol::MusicAction)> musicControl;
   // Every notification from the watch, for debugging.
   std::function<void(const protocol::Bytes&)> rawNotification;
 };

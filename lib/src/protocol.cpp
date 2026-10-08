@@ -408,4 +408,66 @@ std::optional<Workout> decodeWorkout(const std::vector<Bytes>& frames) {
   return w;
 }
 
+std::vector<Bytes> nowPlayingPackets(const NowPlaying& info) {
+  // Inner payload: F0 <len> + TLVs (type, len, data…).
+  Bytes inner;
+  auto appendTlv = [&](uint8_t type, std::string_view data) {
+    if (data.size() > 255) data = data.substr(0, 255);
+    inner.push_back(type);
+    inner.push_back(static_cast<uint8_t>(data.size()));
+    inner.insert(inner.end(), data.begin(), data.end());
+  };
+  appendTlv(0xA0, info.album);
+  appendTlv(0xA1, info.title);
+  appendTlv(0xA2, info.artist);
+  inner.push_back(0xA3);
+  inner.push_back(0x01);
+  inner.push_back(info.playing ? 1 : 0);
+  inner.push_back(0xA4);
+  inner.push_back(0x01);
+  inner.push_back(u8(info.volume));
+
+  Bytes body{0xF0, u8(static_cast<int>(std::min<size_t>(inner.size(), 255)))};
+  // F0 length is one byte; if inner is longer, still send it (watch may
+  // only use the declared prefix — keep payloads short in practice).
+  body.insert(body.end(), inner.begin(), inner.end());
+
+  constexpr size_t kChunk = 16;
+  const size_t total = std::max<size_t>(1, (body.size() + kChunk - 1) / kChunk);
+  std::vector<Bytes> packets;
+  packets.reserve(total);
+  for (size_t i = 0; i < total; ++i) {
+    Bytes p{0x99, 0x01, u8(static_cast<int>(i + 1)), u8(static_cast<int>(total))};
+    const size_t off = i * kChunk;
+    const size_t n = std::min(kChunk, body.size() - std::min(body.size(), off));
+    if (off < body.size()) p.insert(p.end(), body.begin() + static_cast<std::ptrdiff_t>(off),
+                                    body.begin() + static_cast<std::ptrdiff_t>(off + n));
+    p.resize(20, 0);
+    packets.push_back(std::move(p));
+  }
+  return packets;
+}
+
+std::optional<MusicAction> decodeMusicControl(std::span<const uint8_t> value) {
+  // 01 01 01 <action>
+  if (value.size() < 4 || value[0] != 0x01 || value[1] != 0x01 || value[2] != 0x01)
+    return std::nullopt;
+  switch (value[3]) {
+  case 1: return MusicAction::Next;
+  case 2: return MusicAction::PlayPause;
+  case 4: return MusicAction::Previous;
+  default: return std::nullopt;
+  }
+}
+
+const char* toString(MusicAction action) {
+  switch (action) {
+  case MusicAction::Next: return "next";
+  case MusicAction::PlayPause: return "play-pause";
+  case MusicAction::Previous: return "previous";
+  }
+  return "unknown";
+}
+
+
 } // namespace s226::protocol

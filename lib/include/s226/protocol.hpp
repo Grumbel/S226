@@ -285,6 +285,34 @@ Bytes watchFeaturesRead();                            // b8 02 00 ... (20 bytes)
 Bytes watchFeaturesWrite(const WatchFeatures& value); // b8 01 <states> ... 00
 std::optional<WatchFeatures> decodeWatchFeatures(std::span<const uint8_t> value);
 
+// ---- Music (now-playing push + watch media keys) ---------------------
+//
+// Phone → watch: 0x99 multi-packet now-playing metadata (title/artist/…).
+// Watch → phone: 0x01 auto-callback with next / play-pause / previous.
+
+struct NowPlaying {
+  std::string title;
+  std::string artist;
+  std::string album;
+  bool playing = false;
+  int volume = 50; // 0..100, displayed on the watch if it shows a level
+};
+
+// One or more 20-byte ATT writes (0x99 …). Send in order, ~120 ms apart
+// if the link is lossy; back-to-back is fine on a quiet connection.
+std::vector<Bytes> nowPlayingPackets(const NowPlaying& info);
+
+enum class MusicAction : uint8_t {
+  Next = 1,
+  PlayPause = 2,
+  Previous = 4,
+};
+
+// 01 01 01 <action> … — nullopt if not a music-control notification.
+std::optional<MusicAction> decodeMusicControl(std::span<const uint8_t> value);
+
+const char* toString(MusicAction action);
+
 // ---- Stored data ------------------------------------------------------
 
 // Daily history in 5-minute slots. daysAgo 0 = today; the watch sends

@@ -55,6 +55,7 @@ signals:
   void deviceInfo(int deviceNumber, const QString& firmware);
   void battery(int percent, int level);
   void logMessage(const QString& message);
+  void musicControl(s226::protocol::MusicAction action);
   void connectedChanged(bool connected);
 
 private:

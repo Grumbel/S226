@@ -753,6 +753,48 @@ bool workouts(Session& s) {
   return true;
 }
 
+
+// TITLE[/ARTIST[/ALBUM]] optional ;playing=0|1 ;vol=N
+Action music(std::string spec) {
+  return [spec](Session& s) {
+    proto::NowPlaying np;
+    np.playing = true;
+    np.volume = 50;
+    std::string main = spec;
+    // Trailing ;key=value options
+    for (;;) {
+      const size_t semi = main.rfind(';');
+      if (semi == std::string::npos) break;
+      const std::string opt = main.substr(semi + 1);
+      main = main.substr(0, semi);
+      if (opt.rfind("playing=", 0) == 0) {
+        np.playing = (opt.substr(8) != "0" && opt.substr(8) != "false");
+      } else if (opt.rfind("vol=", 0) == 0) {
+        np.volume = std::atoi(opt.c_str() + 4);
+      }
+    }
+    size_t p1 = main.find('/');
+    if (p1 == std::string::npos) {
+      np.title = main;
+    } else {
+      np.title = main.substr(0, p1);
+      size_t p2 = main.find('/', p1 + 1);
+      if (p2 == std::string::npos) {
+        np.artist = main.substr(p1 + 1);
+      } else {
+        np.artist = main.substr(p1 + 1, p2 - p1 - 1);
+        np.album = main.substr(p2 + 1);
+      }
+    }
+    auto packets = proto::nowPlayingPackets(np);
+    for (const auto& p : packets) s.watch().send(p);
+    std::printf("Music: \"%s\" by %s (%s, vol %d) — %zu packet(s)\n",
+                np.title.c_str(), np.artist.empty() ? "?" : np.artist.c_str(),
+                np.playing ? "playing" : "paused", np.volume, packets.size());
+    return true;
+  };
+}
+
 Action sendRaw(Bytes command) {
   return [command](Session& s) {
     std::printf("send:  %s\n", toHex(command).c_str());
@@ -828,7 +870,7 @@ void usage(const char* argv0) {
       "      --person H,W,AGE,m|f,GOAL[,SLEEP]\n"
       "                          height cm, weight kg, age, sex, step goal,\n"
       "                          sleep goal in minutes (default 480)\n"
-      "      --send HEX          send a raw command and print the replies\n",
+      "      --music TITLE[/ARTIST[/ALBUM]][;playing=0|1][;vol=N]\n                          push now-playing metadata to the watch\n      --send HEX          send a raw command and print the replies\n",
       argv0);
 }
 
@@ -862,6 +904,7 @@ int main(int argc, char** argv) {
     OptBrightness,
     OptCountdown,
     OptWatchFace,
+    OptMusic,
   };
   const option longopts[] = {{"list", no_argument, nullptr, 'l'},
                              {"controller", required_argument, nullptr, 'c'},
@@ -890,6 +933,7 @@ int main(int argc, char** argv) {
                              {"brightness", required_argument, nullptr, OptBrightness},
                              {"countdown", required_argument, nullptr, OptCountdown},
                              {"watch-face", required_argument, nullptr, OptWatchFace},
+                             {"music", required_argument, nullptr, OptMusic},
                              {"send", required_argument, nullptr, OptSend},
                              {nullptr, 0, nullptr, 0}};
   auto bad = [&](const char* what, const char* arg) {
@@ -1005,6 +1049,7 @@ int main(int argc, char** argv) {
       actions.push_back(setMessageTypes(*want));
       break;
     }
+    case OptMusic: actions.push_back(music(optarg)); break;
     case OptSend: {
       auto b = parseHex(optarg);
       if (!b) return bad("hex bytes", optarg);
@@ -1047,6 +1092,10 @@ int main(int argc, char** argv) {
       std::fprintf(status, "[%s] notify: %s\n", timestamp().c_str(), toHex(v).c_str());
     }
     if (!actions.empty()) inbox.push(v);
+  };
+  ev.musicControl = [](proto::MusicAction a) {
+    std::printf("[%s] music: %s\n", timestamp().c_str(), proto::toString(a));
+    std::fflush(stdout);
   };
   if (actions.empty()) {
     ev.heartRate = [](const proto::HeartRateSample& s) {
