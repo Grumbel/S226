@@ -246,6 +246,179 @@ void printScreenOnTime(const proto::ScreenOnTime& t) {
   std::printf("Screen on:     %d s (%d-%d s)\n", t.seconds, t.minSeconds, t.maxSeconds);
 }
 
+void printBrightness(const proto::Brightness& b) {
+  if (b.automatic) {
+    std::printf("Brightness:    automatic, %d from %s to %s, else %d (max %d)\n", b.level,
+                hhmm(b.startHour, b.startMinute).c_str(), hhmm(b.endHour, b.endMinute).c_str(),
+                b.otherLevel, b.maxLevel);
+  } else {
+    std::printf("Brightness:    %d (max %d)\n", b.otherLevel, b.maxLevel);
+  }
+}
+
+void printCountdown(const proto::Countdown& c) {
+  std::printf("Countdown:     %d:%02d:%02d%s\n", c.seconds / 3600, c.seconds / 60 % 60,
+              c.seconds % 60, c.showOnWatch ? "" : " (hidden on the watch)");
+}
+
+std::string alarmDays(const proto::Alarm& a) {
+  if (a.days == 0) {
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%04d-%02d-%02d", a.year, a.month, a.day);
+    return std::string("once on ") + buf;
+  }
+  if (a.days == 0x7F) return "daily";
+  std::string out;
+  for (size_t i = 0; i < proto::kAlarmDays.size(); ++i) {
+    if (!(a.days & (1 << i))) continue;
+    if (!out.empty()) out += ",";
+    out += proto::kAlarmDays[i];
+  }
+  return out;
+}
+
+void printAlarm(const proto::Alarm& a) {
+  std::printf("Alarm %d:       %s %s%s\n", a.id, hhmm(a.hour, a.minute).c_str(),
+              alarmDays(a).c_str(), a.enabled ? "" : " (off)");
+}
+
+// All stored alarms, or nullopt if the watch did not answer.
+std::optional<std::vector<proto::Alarm>> readAlarms(Session& s) {
+  auto isFrame = [](const Bytes& v) { return proto::decodeAlarmFrame(v).has_value(); };
+  auto v = s.request(proto::alarmsRead(), isFrame);
+  std::vector<proto::Alarm> alarms;
+  while (v) {
+    auto f = *proto::decodeAlarmFrame(*v);
+    if (f.index == 0) return alarms; // end of list
+    alarms.push_back(f.alarm);
+    v = s.next(isFrame);
+  }
+  return std::nullopt;
+}
+
+bool showAlarms(Session& s) {
+  auto alarms = readAlarms(s);
+  if (!alarms) return fail("the alarm query");
+  if (alarms->empty()) std::puts("Alarms:        none");
+  for (const auto& a : *alarms) printAlarm(a);
+  return true;
+}
+
+// "HH:MM[/daily|once|mon,tue,...]"
+std::optional<proto::Alarm> parseAlarm(int id, const std::string& s) {
+  proto::Alarm a;
+  a.id = id;
+  char tail = 0;
+  const size_t slash = s.find('/');
+  const std::string time = s.substr(0, slash);
+  const std::string days = slash == std::string::npos ? "daily" : s.substr(slash + 1);
+  if (std::sscanf(time.c_str(), "%d:%d%c", &a.hour, &a.minute, &tail) != 2 || a.hour < 0 ||
+      a.hour > 23 || a.minute < 0 || a.minute > 59) {
+    return std::nullopt;
+  }
+  if (days == "daily") {
+    a.days = 0x7F;
+  } else if (days == "once") {
+    // Next occurrence: today if still ahead, else tomorrow.
+    std::time_t t = std::time(nullptr);
+    std::tm now{};
+    localtime_r(&t, &now);
+    if (a.hour * 60 + a.minute <= now.tm_hour * 60 + now.tm_min) t += 24 * 3600;
+    localtime_r(&t, &now);
+    a.days = 0;
+    a.year = now.tm_year + 1900;
+    a.month = now.tm_mon + 1;
+    a.day = now.tm_mday;
+  } else {
+    a.days = 0;
+    size_t pos = 0;
+    while (pos <= days.size()) {
+      const size_t end = std::min(days.find(',', pos), days.size());
+      auto it = std::find(proto::kAlarmDays.begin(), proto::kAlarmDays.end(),
+                          days.substr(pos, end - pos));
+      if (it == proto::kAlarmDays.end()) return std::nullopt;
+      a.days |= static_cast<uint8_t>(1 << (it - proto::kAlarmDays.begin()));
+      pos = end + 1;
+    }
+  }
+  return a;
+}
+
+Action setAlarm(proto::Alarm alarm) {
+  return [alarm](Session& s) {
+    std::optional<proto::AlarmFrame> ack;
+    s.request(proto::alarmWrite(alarm), [&](const Bytes& v) {
+      return (ack = proto::decodeAlarmFrame(v)).has_value();
+    });
+    if (!ack) return fail("the alarm setting");
+    if (!ack->ok) {
+      std::fprintf(stderr, "The watch refused alarm %d\n", alarm.id);
+      return false;
+    }
+    printAlarm(ack->alarm);
+    return true;
+  };
+}
+
+Action deleteAlarm(int id) {
+  return [id](Session& s) {
+    auto alarms = readAlarms(s);
+    if (!alarms) return fail("the alarm query");
+    auto it = std::find_if(alarms->begin(), alarms->end(),
+                           [&](const proto::Alarm& a) { return a.id == id; });
+    if (it == alarms->end()) {
+      std::fprintf(stderr, "There is no alarm %d\n", id);
+      return false;
+    }
+    std::optional<proto::AlarmFrame> ack;
+    s.request(proto::alarmDelete(*it), [&](const Bytes& v) {
+      return (ack = proto::decodeAlarmFrame(v)).has_value();
+    });
+    if (!ack || !ack->ok) return fail("the alarm deletion");
+    std::printf("Alarm %d deleted\n", id);
+    return true;
+  };
+}
+
+Action setBrightness(std::string value) {
+  return [value](Session& s) {
+    auto current = s.query<proto::Brightness>(proto::brightnessRead(), proto::decodeBrightness);
+    if (!current) return fail("the brightness query");
+    proto::Brightness b = proto::automaticBrightness();
+    if (value != "auto") {
+      const int level = std::atoi(value.c_str());
+      if (level < 1 || level > current->maxLevel) {
+        std::fprintf(stderr, "The watch accepts brightness 1-%d\n", current->maxLevel);
+        return false;
+      }
+      b = proto::manualBrightness(level);
+    }
+    auto result = s.query<proto::Brightness>(proto::brightnessWrite(b), proto::decodeBrightness);
+    if (!result) return fail("the brightness setting");
+    printBrightness(*result);
+    return true;
+  };
+}
+
+Action setCountdown(int seconds) {
+  return [seconds](Session& s) {
+    auto result =
+        s.query<proto::Countdown>(proto::countdownWrite(seconds), proto::decodeCountdown);
+    if (!result) return fail("the countdown setting");
+    printCountdown(*result);
+    return true;
+  };
+}
+
+Action setWatchFace(int style) {
+  return [style](Session& s) {
+    auto result = s.query<int>(proto::watchFaceWrite(style), proto::decodeWatchFace);
+    if (!result) return fail("the watch face setting");
+    std::printf("Watch face:    %d\n", *result);
+    return true;
+  };
+}
+
 void printFeatures(const proto::WatchFeatures& f) {
   std::string on, off;
   for (const auto& feature : proto::kWatchFeatures) {
@@ -363,7 +536,16 @@ bool showSettings(Session& s) {
       s.query<proto::WatchFeatures>(proto::watchFeaturesRead(), proto::decodeWatchFeatures);
   if (!feat) return fail("the feature query");
   printFeatures(*feat);
-  return true;
+  auto bright = s.query<proto::Brightness>(proto::brightnessRead(), proto::decodeBrightness);
+  if (!bright) return fail("the brightness query");
+  printBrightness(*bright);
+  auto face = s.query<int>(proto::watchFaceRead(), proto::decodeWatchFace);
+  if (!face) return fail("the watch face query");
+  std::printf("Watch face:    %d\n", *face);
+  auto countdown = s.query<proto::Countdown>(proto::countdownRead(), proto::decodeCountdown);
+  if (!countdown) return fail("the countdown query");
+  printCountdown(*countdown);
+  return showAlarms(s);
 }
 
 // value: "on", "off" or "HH:MM-HH:MM/MIN"
@@ -629,6 +811,15 @@ void usage(const char* argv0) {
       "      --feature NAME=on|off\n"
       "                          switch a watch feature (see --settings), e.g.\n"
       "                          stopwatch=off, auto-hr=on, 24h=off (12-hour clock)\n"
+      "      --alarms            list the alarms\n"
+      "      --alarm ID=HH:MM[/DAYS]\n"
+      "                          set alarm ID (1-...); DAYS is daily (default), once,\n"
+      "                          or e.g. mon,tue,wed,thu,fri\n"
+      "      --alarm-delete ID   delete alarm ID\n"
+      "      --brightness auto|LEVEL\n"
+      "                          automatic (dimmed 22:00-08:00) or a fixed level\n"
+      "      --countdown SEC     preset of the watch's countdown timer\n"
+      "      --watch-face N      select watch face N\n"
       "      --sedentary on|off|HH:MM-HH:MM/MIN\n"
       "                          sedentary reminder, e.g. 08:00-18:00/60\n"
       "      --hr-alarm on|off|LOW-HIGH\n"
@@ -665,6 +856,12 @@ int main(int argc, char** argv) {
     OptNotifyType,
     OptCall,
     OptFeature,
+    OptAlarms,
+    OptAlarm,
+    OptAlarmDelete,
+    OptBrightness,
+    OptCountdown,
+    OptWatchFace,
   };
   const option longopts[] = {{"list", no_argument, nullptr, 'l'},
                              {"controller", required_argument, nullptr, 'c'},
@@ -687,6 +884,12 @@ int main(int argc, char** argv) {
                              {"notify-type", required_argument, nullptr, OptNotifyType},
                              {"call", required_argument, nullptr, OptCall},
                              {"feature", required_argument, nullptr, OptFeature},
+                             {"alarms", no_argument, nullptr, OptAlarms},
+                             {"alarm", required_argument, nullptr, OptAlarm},
+                             {"alarm-delete", required_argument, nullptr, OptAlarmDelete},
+                             {"brightness", required_argument, nullptr, OptBrightness},
+                             {"countdown", required_argument, nullptr, OptCountdown},
+                             {"watch-face", required_argument, nullptr, OptWatchFace},
                              {"send", required_argument, nullptr, OptSend},
                              {nullptr, 0, nullptr, 0}};
   auto bad = [&](const char* what, const char* arg) {
@@ -749,6 +952,38 @@ int main(int argc, char** argv) {
     }
     case OptNotify: actions.push_back(notify(optarg, notifyType)); break;
     case OptCall: actions.push_back(call(optarg)); break;
+    case OptAlarms: actions.push_back(showAlarms); break;
+    case OptAlarm: {
+      int id = 0, n = 0;
+      if (std::sscanf(optarg, "%d=%n", &id, &n) != 1 || n == 0 || id < 1 || id > 255) {
+        return bad("alarm", optarg);
+      }
+      auto a = parseAlarm(id, optarg + n);
+      if (!a) return bad("alarm", optarg);
+      actions.push_back(setAlarm(*a));
+      break;
+    }
+    case OptAlarmDelete:
+    case OptCountdown:
+    case OptWatchFace: {
+      int value = 0;
+      char tail = 0;
+      const int max = ch == OptCountdown ? 0xFFFFFF : 255;
+      if (std::sscanf(optarg, "%d%c", &value, &tail) != 1 || value < 0 || value > max) {
+        return bad(ch == OptCountdown ? "countdown" : ch == OptWatchFace ? "watch face" : "alarm",
+                   optarg);
+      }
+      actions.push_back(ch == OptCountdown    ? setCountdown(value)
+                        : ch == OptWatchFace ? setWatchFace(value)
+                                             : deleteAlarm(value));
+      break;
+    }
+    case OptBrightness: {
+      const std::string v = optarg;
+      if (v != "auto" && std::atoi(optarg) < 1) return bad("brightness", optarg);
+      actions.push_back(setBrightness(v));
+      break;
+    }
     case OptFeature: {
       auto f = parseFeature(optarg);
       if (!f) return bad("feature setting", optarg);

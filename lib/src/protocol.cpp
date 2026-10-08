@@ -211,6 +211,91 @@ std::optional<HeartRateAlarm> decodeHeartRateAlarm(std::span<const uint8_t> v) {
   return HeartRateAlarm{v[3] != 0, v[1], v[2]};
 }
 
+namespace {
+
+Bytes padded(Bytes b) {
+  b.resize(20, 0);
+  return b;
+}
+
+} // namespace
+
+Bytes brightnessRead() { return padded({0xB1, 0x02}); }
+
+Bytes brightnessWrite(const Brightness& b) {
+  return padded({0xB1, 0x01, u8(b.startHour), u8(b.startMinute), u8(b.endHour),
+                 u8(b.endMinute), u8(b.level), u8(b.otherLevel),
+                 u8(b.automatic ? 1 : 2)});
+}
+
+std::optional<Brightness> decodeBrightness(std::span<const uint8_t> v) {
+  if (v.size() < 11 || v[0] != 0xB1 || v[1] != 0x01) return std::nullopt;
+  return Brightness{v[9] == 1, v[3], v[4], v[5], v[6], v[7], v[8], v[10]};
+}
+
+Brightness automaticBrightness() { return Brightness{true, 22, 0, 8, 0, 2, 4}; }
+
+Brightness manualBrightness(int level) { return Brightness{false, 0, 0, 23, 59, level, level}; }
+
+Bytes countdownRead() { return {0xB2, 0x02}; }
+
+Bytes countdownWrite(int seconds, bool showOnWatch) {
+  const int s = std::clamp(seconds, 0, 0xFFFFFF);
+  return {0xB2,
+          0x01,
+          0x00,
+          static_cast<uint8_t>(s),
+          static_cast<uint8_t>(s >> 8),
+          static_cast<uint8_t>(s >> 16),
+          u8(showOnWatch ? 1 : 0)};
+}
+
+std::optional<Countdown> decodeCountdown(std::span<const uint8_t> v) {
+  if (v.size() < 8 || v[0] != 0xB2 || v[2] != 0x01) return std::nullopt;
+  return Countdown{v[4] | v[5] << 8 | v[6] << 16, v[7] != 0};
+}
+
+Bytes watchFaceRead() { return padded({0xC7, 0x02}); }
+Bytes watchFaceWrite(int style) { return padded({0xC7, 0x01, u8(style)}); }
+
+std::optional<int> decodeWatchFace(std::span<const uint8_t> v) {
+  if (v.size() < 4 || v[0] != 0xC7 || v[2] != 0x01) return std::nullopt;
+  return v[3];
+}
+
+Bytes alarmsRead() { return padded({0xB9, 0x02}); }
+
+namespace {
+
+Bytes alarmPacket(uint8_t op, const Alarm& a) {
+  const int year = a.days ? 0 : a.year;
+  return padded({0xB9, op, u8(a.id), u8(a.hour), u8(a.minute), u8(a.enabled ? 1 : 0), a.days,
+                 0x00, static_cast<uint8_t>(year), static_cast<uint8_t>(year >> 8),
+                 u8(a.days ? 0 : a.month), u8(a.days ? 0 : a.day)});
+}
+
+} // namespace
+
+Bytes alarmWrite(const Alarm& a) { return alarmPacket(0x01, a); }
+Bytes alarmDelete(const Alarm& a) { return alarmPacket(0x00, a); }
+
+std::optional<AlarmFrame> decodeAlarmFrame(std::span<const uint8_t> v) {
+  if (v.size() < 15 || v[0] != 0xB9) return std::nullopt;
+  AlarmFrame f;
+  f.ok = v[1] == 0x01;
+  f.index = v[2];
+  f.count = v[3];
+  f.alarm.id = v[5];
+  f.alarm.hour = v[6];
+  f.alarm.minute = v[7];
+  f.alarm.enabled = v[8] != 0;
+  f.alarm.days = v[9];
+  f.alarm.year = le16(v, 11);
+  f.alarm.month = v[13];
+  f.alarm.day = v[14];
+  return f;
+}
+
 Bytes screenOnTimeRead() { return {0xB4, 0x02}; }
 Bytes screenOnTimeWrite(int seconds) { return {0xB4, 0x01, u8(seconds)}; }
 

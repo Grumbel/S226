@@ -159,6 +159,67 @@ Bytes heartRateAlarmWrite(const HeartRateAlarm& value); // ac high low on/off
 // ac high low enabled op 01
 std::optional<HeartRateAlarm> decodeHeartRateAlarm(std::span<const uint8_t> value);
 
+struct Brightness {
+  // Automatic: `level` from start to end (night), `otherLevel` otherwise.
+  // Manual: H-Band sends 00:00-23:59 with both levels equal.
+  bool automatic = false;
+  int startHour = 0, startMinute = 0;
+  int endHour = 23, endMinute = 59;
+  int level = 1;
+  int otherLevel = 1;
+  int maxLevel = 0; // reply only
+};
+
+Bytes brightnessRead();                         // b1 02 00 ... (20 bytes)
+Bytes brightnessWrite(const Brightness& value); // b1 01 sh sm eh em level other mode
+// b1 01 op sh sm eh em level other mode max; mode 1 automatic, 2 manual
+std::optional<Brightness> decodeBrightness(std::span<const uint8_t> value);
+// What H-Band calls automatic: 22:00-08:00 at level 2, else 4.
+Brightness automaticBrightness();
+Brightness manualBrightness(int level);
+
+struct Countdown {
+  int seconds = 0;
+  bool showOnWatch = false; // the watch's countdown screen
+};
+
+Bytes countdownRead();                                      // b2 02
+Bytes countdownWrite(int seconds, bool showOnWatch = true); // b2 01 00 <seconds u24le> <ui>
+// b2 op 01 id <seconds u24le> ui ...
+std::optional<Countdown> decodeCountdown(std::span<const uint8_t> value);
+
+Bytes watchFaceRead();          // c7 02 00 ... (20 bytes)
+Bytes watchFaceWrite(int style); // c7 01 <style>
+// c7 op ok style ...; nullopt also if the watch refused the style
+std::optional<int> decodeWatchFace(std::span<const uint8_t> value);
+
+// Alarms (0xB9). days is a weekday bit mask (bit 0 = kAlarmDays[0]);
+// 0 means once, on the given date.
+inline constexpr std::array<std::string_view, 7> kAlarmDays = {"mon", "tue", "wed", "thu",
+                                                                "fri", "sat", "sun"};
+
+struct Alarm {
+  int id = 1;
+  int hour = 0, minute = 0;
+  bool enabled = true;
+  uint8_t days = 0x7F;
+  int year = 0, month = 0, day = 0; // only if days == 0
+};
+
+Bytes alarmsRead();                      // b9 02 00 ... (20 bytes)
+Bytes alarmWrite(const Alarm& alarm);    // b9 01 id h m on days 00 <year u16le> mon day
+Bytes alarmDelete(const Alarm& alarm);   // b9 00 id ... (same fields)
+
+struct AlarmFrame {
+  bool ok = false;
+  int index = 0; // 1..count while listing; 0 ends a list and acks writes
+  int count = 0; // alarms stored
+  Alarm alarm;   // valid if index > 0, or in the ack of a write / delete
+};
+
+// b9 ok index count op id h m on days scene <year u16le> mon day ... crc
+std::optional<AlarmFrame> decodeAlarmFrame(std::span<const uint8_t> value);
+
 struct ScreenOnTime {
   int seconds = 0;
   int minSeconds = 0; // range the watch accepts

@@ -343,6 +343,23 @@ per-minute sums exactly (2026-10-06 session: 6189 steps, 5673 m, 371041,
 activity 7156 over 177 minutes). The kcal ratio per step matches `d8`
 read as 0.1 kcal, which backs that unit too.
 
+### Brightness, countdown, watch face, alarms — tested on the watch
+
+* `b1`: write `b1 01 sh sm eh em level other mode` (20 bytes); reply
+  `b1 01 op sh sm eh em level other mode max`. Mode 1 automatic (H-Band:
+  22:00-08:00 level 2, else 4), 2 manual (00:00-23:59, both levels
+  equal). Max level 12.
+* `b2`: read `b2 02`; write `b2 01 00 <seconds u24 LE> <show on watch>`;
+  reply `b2 op 01 id <seconds u24 LE> ui`.
+* `c7`: read `c7 02`, set `c7 01 <style>`; reply `c7 op ok style`.
+* `ab` (classic alarms) answers `ab 00`: not supported, use `b9`.
+* `b9`: write `b9 <op 1 set / 0 delete> id h m on days scene <year u16 LE> mon day`
+  (date only for one-off alarms, days = 0); ack `b9 ok 00 count op id h m
+  on days scene year mon day … crc16`. Read `b9 02` lists `b9 01 index
+  count 02 …` per alarm, then an `index 0` frame. The CRC sent by H-Band
+  can be left 0. At least 5 alarms; the watch has no alarm list screen.
+  Weekday bit order not verified yet (bit 0 = Monday assumed).
+
 ### Bind reply (0xA1)
 
 ```text
