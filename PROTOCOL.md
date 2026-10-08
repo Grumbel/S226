@@ -357,8 +357,10 @@ read as 0.1 kcal, which backs that unit too.
   (date only for one-off alarms, days = 0); ack `b9 ok 00 count op id h m
   on days scene year mon day … crc16`. Read `b9 02` lists `b9 01 index
   count 02 …` per alarm, then an `index 0` frame. The CRC sent by H-Band
-  can be left 0. At least 5 alarms; the watch has no alarm list screen.
-  Weekday bit order not verified yet (bit 0 = Monday assumed).
+  can be left 0. At least 8 alarms; the watch has no alarm list screen.
+  Days: bit 0 = Monday … bit 6 = Sunday, `7f` daily (tested: `10`
+  rang on a Friday). Alarms set for 00:01-00:04 did not ring; why is
+  unknown.
 
 ### Bind reply (0xA1)
 
