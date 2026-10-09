@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-46.1-desktop-notify-94f9363.bundle`
-- Tip: `a3bd0f8` desktop notification → watch
+- Latest bundle: artifacts `s226-48.1-single-instance-94f9363.bundle`
+- Tip: `4923f88` single-instance GUI ( --multi-instance override)
 
 ## Done in this sequence
 
