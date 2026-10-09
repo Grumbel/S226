@@ -28,6 +28,8 @@ qt_add_resources(s226-hr icons
     ../data/icons/menu-heart-rate.svg
     ../data/icons/menu-blood-pressure.svg
     ../data/icons/menu-metronome.svg
+    ../data/icons/menu-connect.svg
+    ../data/icons/menu-disconnect.svg
 )
 target_link_libraries(s226-hr PRIVATE s226ble Qt6::Widgets Qt6::Multimedia Qt6::DBus PkgConfig::DBUS)
 target_compile_definitions(s226-hr PRIVATE S226_VERSION="${S226_VERSION}")
