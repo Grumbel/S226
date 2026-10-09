@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-65.1-contacts-gui-94f9363.bundle`
-- Tip: `aa8898e` Contacts GUI on Notify tab
+- Latest bundle: artifacts `s226-67.1-notify-filters-94f9363.bundle`
+- Tip: `5ea83cc` desktop notify filters (urgency/category/app)
 
 ## Done in this sequence
 
