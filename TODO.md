@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-59.1-fix-notify-freeze-94f9363.bundle`
-- Tip: `39f35c7` fix desktop-notify GUI freeze
+- Latest bundle: artifacts `s226-61.1-desktop-notify-correct-94f9363.bundle`
+- Tip: `141c75a` desktop notify: BecomeMonitor on worker thread (KDE Connect pattern)
 
 ## Done in this sequence
 
