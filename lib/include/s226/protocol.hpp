@@ -373,4 +373,61 @@ struct Workout {
 // Assembles all frames of one slot (in order, as received).
 std::optional<Workout> decodeWorkout(const std::vector<Bytes>& frames);
 
+// ---- Sleep (0xE0) -----------------------------------------------------
+// Multi-packet day dump. daysAgo 0 = last night / today; 1 = yesterday, …
+// Write e0 <day>, collect notifies until packet index is 0 (end of day).
+// Payload bytes [4..19] of each frame are concatenated into a day blob.
+
+Bytes sleepRead(int daysAgo); // e0 <daysAgo>
+
+struct SleepFrame {
+  int packetIndex = 0; // 0 = last packet of this day
+  int byte2 = 0;       // used by classic item parse; opaque
+  int dayIndex = 0;    // 0 = today, 1 = yesterday, …
+  Bytes payload;       // 16 bytes (may be shorter if the ATT value is)
+};
+
+// e0 <index> <byte2> <day> <16 payload bytes>
+std::optional<SleepFrame> decodeSleepFrame(std::span<const uint8_t> value);
+
+// TimeBean as used by the sleep base block: year (often year-2000),
+// month, day, hour — four single bytes.
+struct SleepTime {
+  int year = 0;
+  int month = 0;
+  int day = 0;
+  int hour = 0;
+};
+
+struct SleepSession {
+  SleepTime sleepDown; // fall-asleep
+  SleepTime sleepUp;   // wake
+  int deepMinutes = 0;
+  int lightMinutes = 0;
+  int otherMinutes = 0;  // V1 "other" duration
+  int totalMinutes = 0;
+  int quality = 0;
+  int wakeCount = 0;
+  // V1 score fields (0 if classic / unknown)
+  int getUpScore = 0;
+  int deepScore = 0;
+  int efficiencyScore = 0;
+  int fallAsleepScore = 0;
+  int sleepTimeScore = 0;
+  int onePointDuration = 5; // minutes represented by one stage sample
+  // Stage curve: digits '0'..'4' (V1) or '0'/'1'/'2' (classic, 2=awake).
+  std::string stages;
+  bool v1 = false; // true if decoded from the protocol-type-3 TLV path
+};
+
+struct SleepDay {
+  int daysAgo = 0;
+  std::vector<SleepSession> sessions;
+  bool empty = true; // no sessions, or only zeroed end-of-day frame(s)
+};
+
+// Concatenate frame payloads and parse classic or V1. Returns nullopt only
+// when the frame list is empty or contains no valid 0xE0 frames.
+std::optional<SleepDay> decodeSleepDay(const std::vector<Bytes>& frames);
+
 } // namespace s226::protocol

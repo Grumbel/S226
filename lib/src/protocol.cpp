@@ -469,5 +469,198 @@ const char* toString(MusicAction action) {
   return "unknown";
 }
 
+// ---- Sleep (0xE0) -----------------------------------------------------
+
+Bytes sleepRead(int daysAgo) { return {0xE0, u8(daysAgo)}; }
+
+std::optional<SleepFrame> decodeSleepFrame(std::span<const uint8_t> v) {
+  if (v.size() < 4 || v[0] != 0xE0) return std::nullopt;
+  SleepFrame f;
+  f.packetIndex = v[1];
+  f.byte2 = v[2];
+  f.dayIndex = v[3];
+  if (v.size() > 4)
+    f.payload.assign(v.begin() + 4, v.end());
+  return f;
+}
+
+namespace {
+
+SleepTime readTimeBean(std::span<const uint8_t> b, size_t off) {
+  // Four single-byte fields: year (commonly year-2000), month, day, hour.
+  SleepTime t;
+  if (b.size() < off + 4) return t;
+  t.year = b[off];
+  t.month = b[off + 1];
+  t.day = b[off + 2];
+  t.hour = b[off + 3];
+  // Year is a single byte; values 1..99 are treated as year-2000 offsets.
+  if (t.year > 0 && t.year < 100) t.year += 2000;
+  return t;
+}
+
+bool blobLooksEmpty(const Bytes& blob) {
+  if (blob.empty()) return true;
+  for (uint8_t b : blob)
+    if (b != 0) return false;
+  return true;
+}
+
+// Outer V1 items are 0xA1 + length (LE u16) + payload. Returns true if the
+// blob starts with at least one such item.
+bool isSleepV1(const Bytes& blob) {
+  if (blob.size() < 3 || blob[0] != 0xA1) return false;
+  const size_t len = static_cast<size_t>(le16(blob, 1));
+  return 3 + len <= blob.size();
+}
+
+// Walk TLV triples inside an 0xA1 item payload: tag, length LE u16, data.
+void parseV1Item(std::span<const uint8_t> item, SleepSession& s) {
+  size_t i = 0;
+  while (i + 3 <= item.size()) {
+    const uint8_t tag = item[i];
+    const size_t len = static_cast<size_t>(le16(item, i + 1));
+    i += 3;
+    if (i + len > item.size()) break;
+    std::span<const uint8_t> body(item.data() + i, len);
+    i += len;
+
+    if (tag == 0xA3 && body.size() >= 35) {
+      s.sleepDown = readTimeBean(body, 0);
+      s.sleepUp = readTimeBean(body, 4);
+      s.quality = body[15];
+      s.wakeCount = body[16];
+      s.getUpScore = body[9];
+      s.deepScore = body[10];
+      s.efficiencyScore = body[11];
+      s.fallAsleepScore = body[12];
+      s.sleepTimeScore = body[13];
+      s.deepMinutes = le16(body, 19);
+      s.lightMinutes = le16(body, 21);
+      s.otherMinutes = le16(body, 23);
+      s.totalMinutes = le16(body, 25);
+      s.onePointDuration = le16(body, 33);
+      if (s.onePointDuration <= 0) s.onePointDuration = 5;
+      s.v1 = true;
+    } else if (tag == 0xA5) {
+      // 2-byte samples: stage = (sample & 0xE000) >> 13, clamped to 0..4.
+      s.stages.clear();
+      for (size_t o = 0; o + 1 < body.size(); o += 2) {
+        const int sample = le16(body, o);
+        int stage = (sample & 0xE000) >> 13;
+        if (stage > 4) stage = 4;
+        s.stages.push_back(static_cast<char>('0' + stage));
+      }
+    }
+    // 0xA2 CRC, 0xA4/0xA7 insomnia, 0xA6 lengths: ignored for now.
+  }
+}
+
+std::vector<SleepSession> parseSleepV1(const Bytes& blob) {
+  std::vector<SleepSession> sessions;
+  size_t i = 0;
+  while (i + 3 <= blob.size() && blob[i] == 0xA1) {
+    const size_t len = static_cast<size_t>(le16(blob, i + 1));
+    i += 3;
+    if (i + len > blob.size()) break;
+    SleepSession s;
+    parseV1Item(std::span<const uint8_t>(blob.data() + i, len), s);
+    i += len;
+    // Keep items that carried a base block (or at least some stage data).
+    if (s.v1 || !s.stages.empty() || s.totalMinutes > 0 || s.deepMinutes > 0 ||
+        s.lightMinutes > 0)
+      sessions.push_back(std::move(s));
+  }
+  return sessions;
+}
+
+// Classic path: fixed field offsets from the APK's getSleepBean (1-based
+// indices in the doc → 0-based here). One record is at least 56 bytes;
+// multiple naps are sequential. Stage curve decoding is partial — we
+// surface deep/light/quality/times and a simplified stage string.
+std::vector<SleepSession> parseSleepClassic(const Bytes& blob) {
+  std::vector<SleepSession> sessions;
+  // Doc indices are 1-based; shift by -1. Minimum useful size covers
+  // times + deep/light/quality (through index 11 → byte 10).
+  constexpr size_t kMinRecord = 11;
+  size_t off = 0;
+  while (off + kMinRecord <= blob.size()) {
+    // Skip runs of zeros between records.
+    if (blob[off] == 0 && blob[off + 1] == 0) {
+      ++off;
+      continue;
+    }
+    SleepSession s;
+    // Indices 1-4 / 5-8 → bytes 0-3 / 4-7 as TimeBean.
+    s.sleepDown = readTimeBean(blob, off + 0);
+    s.sleepUp = readTimeBean(blob, off + 4);
+    s.deepMinutes = blob[off + 8] * 5;   // index 9
+    s.lightMinutes = blob[off + 9] * 5;  // index 10
+    s.quality = blob[off + 10];          // index 11
+    s.totalMinutes = s.deepMinutes + s.lightMinutes;
+    if (off + 54 < blob.size()) {
+      s.wakeCount = blob[off + 54]; // index 55
+      if (s.wakeCount > 20) s.wakeCount = 0; // sanity
+    }
+    // Stage curve source: bytes index 12..42 (31 bytes) → hex-digit bits.
+    // Keep a compact 0/1 string from the high nibble of each byte for UI.
+    if (off + 42 <= blob.size()) {
+      const int bitLen =
+          off + 42 < blob.size() ? std::min(int(blob[off + 42]), 248) : 0; // idx 43
+      const int nHex = std::min(62, bitLen > 0 ? (bitLen + 3) / 4 : 62);
+      for (int h = 0; h < nHex && off + 11 + 1 + h / 2 < blob.size(); ++h) {
+        const uint8_t byte = blob[off + 11 + 1 + h / 2]; // indices 12..
+        const int nibble = (h % 2 == 0) ? (byte >> 4) : (byte & 0x0F);
+        // Expand nibble to 4 bits as '0'/'1' characters (MSB first).
+        for (int b = 3; b >= 0 && static_cast<int>(s.stages.size()) < bitLen; --b)
+          s.stages.push_back((nibble & (1 << b)) ? '1' : '0');
+      }
+    }
+    s.v1 = false;
+    // Accept the record if it has a plausible time or non-zero duration.
+    const bool hasTime = s.sleepDown.month >= 1 && s.sleepDown.month <= 12 &&
+                         s.sleepDown.day >= 1 && s.sleepDown.day <= 31;
+    if (hasTime || s.totalMinutes > 0 || s.quality > 0)
+      sessions.push_back(std::move(s));
+    // Advance by a full classic record when possible (~67 bytes per doc).
+    constexpr size_t kRecord = 67;
+    if (off + kRecord <= blob.size())
+      off += kRecord;
+    else
+      break;
+  }
+  return sessions;
+}
+
+} // namespace
+
+std::optional<SleepDay> decodeSleepDay(const std::vector<Bytes>& frames) {
+  if (frames.empty()) return std::nullopt;
+
+  SleepDay day;
+  Bytes blob;
+  bool any = false;
+  for (const Bytes& raw : frames) {
+    auto f = decodeSleepFrame(raw);
+    if (!f) continue;
+    any = true;
+    day.daysAgo = f->dayIndex;
+    blob.insert(blob.end(), f->payload.begin(), f->payload.end());
+  }
+  if (!any) return std::nullopt;
+
+  if (blobLooksEmpty(blob)) {
+    day.empty = true;
+    return day;
+  }
+
+  if (isSleepV1(blob))
+    day.sessions = parseSleepV1(blob);
+  else
+    day.sessions = parseSleepClassic(blob);
+
+  day.empty = day.sessions.empty();
+  return day;
+}
 
 } // namespace s226::protocol

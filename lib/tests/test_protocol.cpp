@@ -268,6 +268,98 @@ int main() {
   // Inner stream starts with F0 after the 4-byte header
   CHECK(musicPkts[0][4] == 0xF0);
 
+  // Sleep frames (0xE0): empty day — single end packet, zero payload
+  {
+    auto emptyFr = frame({0xE0, 0x00, 0x00, 0x00});
+    auto sf = decodeSleepFrame(emptyFr);
+    CHECK(sf && sf->packetIndex == 0 && sf->dayIndex == 0 && sf->payload.size() == 16);
+    auto day = decodeSleepDay(std::vector<Bytes>{emptyFr});
+    CHECK(day && day->empty && day->sessions.empty() && day->daysAgo == 0);
+    CHECK(sleepRead(1).size() == 2 && sleepRead(1)[0] == 0xE0 && sleepRead(1)[1] == 0x01);
+    CHECK(!decodeSleepFrame(frame({0xD1, 0x00})));
+  }
+
+  // Sleep V1: one 0xA1 item containing 0xA3 base + 0xA5 curve
+  {
+    // Inner TLV: A3 (35 bytes base) + A5 (4 bytes = 2 samples)
+    Bytes inner;
+    auto put_u8 = [&](uint8_t v) { inner.push_back(v); };
+    auto put_u16 = [&](int v) {
+      inner.push_back(static_cast<uint8_t>(v & 0xFF));
+      inner.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    };
+    // 0xA3, len 36
+    put_u8(0xA3);
+    put_u16(36);
+    // sleepDown TimeBean: y=26, m=10, d=8, h=23
+    put_u8(26); put_u8(10); put_u8(8); put_u8(23);
+    // sleepUp: y=26, m=10, d=9, h=6
+    put_u8(26); put_u8(10); put_u8(9); put_u8(6);
+    put_u8(1);  // sleepTag
+    put_u8(80); // getUpScore
+    put_u8(70); // deepScore
+    put_u8(90); // efficiency
+    put_u8(75); // fallAsleep
+    put_u8(85); // sleepTimeScore
+    put_u8(0);  // exitSleepMode
+    put_u8(4);  // quality
+    put_u8(2);  // getUpTimes / wakeCount
+    put_u16(0); // deepAndLightMode
+    put_u16(120); // deepDuration
+    put_u16(180); // lightDuration
+    put_u16(30);  // otherDuration
+    put_u16(330); // sleepDuration
+    put_u16(40);  // firstDeep
+    put_u16(15);  // getUpDuration
+    put_u16(0);   // getUpToDeepAve
+    put_u16(5);   // onePointDuration
+    put_u8(0);    // accurateType  (36th byte)
+    // 0xA5 curve: two samples. stage in top 3 bits of u16 LE.
+    // stage 1 → 0x2000, stage 2 → 0x4000
+    put_u8(0xA5);
+    put_u16(4);
+    put_u16(0x2000);
+    put_u16(0x4000);
+
+    // Outer 0xA1 + length + inner
+    Bytes blob;
+    blob.push_back(0xA1);
+    blob.push_back(static_cast<uint8_t>(inner.size() & 0xFF));
+    blob.push_back(static_cast<uint8_t>((inner.size() >> 8) & 0xFF));
+    blob.insert(blob.end(), inner.begin(), inner.end());
+
+    // Split blob into 16-byte payload frames; last index = 0
+    std::vector<Bytes> frames;
+    size_t off = 0;
+    int idx = 1;
+    while (off < blob.size()) {
+      Bytes fr(20, 0);
+      fr[0] = 0xE0;
+      fr[3] = 1; // yesterday
+      size_t n = std::min<size_t>(16, blob.size() - off);
+      for (size_t k = 0; k < n; ++k) fr[4 + k] = blob[off + k];
+      off += n;
+      fr[1] = (off >= blob.size()) ? 0 : static_cast<uint8_t>(idx++);
+      frames.push_back(fr);
+    }
+    CHECK(!frames.empty());
+    auto last = decodeSleepFrame(frames.back());
+    CHECK(last && last->packetIndex == 0);
+
+    auto day = decodeSleepDay(frames);
+    CHECK(day && !day->empty && day->daysAgo == 1);
+    CHECK(day->sessions.size() == 1);
+    const auto& s = day->sessions[0];
+    CHECK(s.v1);
+    CHECK(s.sleepDown.year == 2026 && s.sleepDown.month == 10 && s.sleepDown.day == 8 &&
+          s.sleepDown.hour == 23);
+    CHECK(s.sleepUp.hour == 6);
+    CHECK(s.deepMinutes == 120 && s.lightMinutes == 180 && s.otherMinutes == 30);
+    CHECK(s.totalMinutes == 330 && s.quality == 4 && s.wakeCount == 2);
+    CHECK(s.efficiencyScore == 90 && s.onePointDuration == 5);
+    CHECK(s.stages == "12");
+  }
+
   if (failures == 0) std::puts("all protocol checks passed");
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
