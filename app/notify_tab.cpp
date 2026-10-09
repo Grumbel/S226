@@ -57,6 +57,9 @@ void NotifyTab::buildUi() {
     desktopNotifyForward_->setChecked(desktopNotify_->isEnabled());
     connect(desktopNotifyForward_, &QCheckBox::toggled, desktopNotify_,
             &NotificationForwarder::setEnabled);
+    // Uncheck if setEnabled(true) fails (no eavesdrop / no session bus).
+    connect(desktopNotify_, &NotificationForwarder::enabledChanged, desktopNotifyForward_,
+            &QCheckBox::setChecked);
   } else {
     desktopNotifyForward_->setEnabled(false);
   }

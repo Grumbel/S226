@@ -1,6 +1,8 @@
 #include "main_window.hpp"
 
 #include <QAction>
+#include <functional>
+#include <memory>
 #include <QApplication>
 #include <QEvent>
 #include <QMenu>
@@ -113,9 +115,19 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
             if (text == last && now - lastMs < 2500) return;
             last = text;
             lastMs = now;
-            for (const auto& pkt : s226::protocol::messagePackets(text.toStdString(),
-                                                                  s226::protocol::MessageType::Other))
-              bridge_.send(pkt);
+            // H-Band expects ~120 ms between 0xC2 fragments; do not burst.
+            auto packets = std::make_shared<std::vector<s226::protocol::Bytes>>(
+                s226::protocol::messagePackets(text.toStdString(),
+                                               s226::protocol::MessageType::Other));
+            auto index = std::make_shared<size_t>(0);
+            auto sendNext = std::make_shared<std::function<void()>>();
+            *sendNext = [this, packets, index, sendNext]() {
+              if (!bridge_.isConnected() || *index >= packets->size()) return;
+              bridge_.send((*packets)[(*index)++]);
+              if (*index < packets->size())
+                QTimer::singleShot(120, this, *sendNext);
+            };
+            (*sendNext)();
             appendLog(tr("Desktop notification → watch: %1").arg(text));
           });
   connect(desktopNotify_, &NotificationForwarder::listenFailed, this, [this](const QString& reason) {
