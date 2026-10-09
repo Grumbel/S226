@@ -13,6 +13,7 @@ class QPushButton;
 class QLabel;
 class QCheckBox;
 class QSpinBox;
+class QTableWidget;
 
 class NotifyTab : public QWidget {
   Q_OBJECT
@@ -29,6 +30,10 @@ private:
   void pushNowPlaying();
   void pullFromMpris();
   void onMusicControl(s226::protocol::MusicAction action);
+  void addContactRow();
+  void removeSelectedContacts();
+  void pushContacts();
+  void clearContactsOnWatch();
 
   WatchBridge& bridge_;
   MprisController* mpris_ = nullptr;
@@ -50,6 +55,11 @@ private:
   QCheckBox* mprisForward_ = nullptr;
   QCheckBox* mprisAutoPush_ = nullptr;
   QCheckBox* desktopNotifyForward_ = nullptr;
+  QTableWidget* contactsTable_ = nullptr;
+  QPushButton* contactAddBtn_ = nullptr;
+  QPushButton* contactRemoveBtn_ = nullptr;
+  QPushButton* contactPushBtn_ = nullptr;
+  QPushButton* contactClearBtn_ = nullptr;
   QLabel* musicLastAction_ = nullptr;
   QLabel* status_ = nullptr;
 };

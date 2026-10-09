@@ -9,6 +9,13 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QHeaderView>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QTimer>
+#include <functional>
+#include <memory>
+#include <algorithm>
 #include <QVBoxLayout>
 
 #include "watch_bridge.hpp"
@@ -82,6 +89,35 @@ void NotifyTab::buildUi() {
   callRow->addWidget(endCallBtn_);
   lay->addWidget(callBox);
 
+  auto* contactBox = new QGroupBox(tr("Contacts"), this);
+  auto* contactLay = new QVBoxLayout(contactBox);
+  contactsTable_ = new QTableWidget(0, 2, contactBox);
+  contactsTable_->setHorizontalHeaderLabels({tr("Name"), tr("Phone")});
+  contactsTable_->horizontalHeader()->setStretchLastSection(true);
+  contactsTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  contactsTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
+  contactsTable_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  contactsTable_->setMaximumHeight(140);
+  contactLay->addWidget(contactsTable_);
+  auto* contactBtns = new QHBoxLayout;
+  contactAddBtn_ = new QPushButton(tr("Add"), contactBox);
+  contactRemoveBtn_ = new QPushButton(tr("Remove"), contactBox);
+  contactPushBtn_ = new QPushButton(tr("Push to watch"), contactBox);
+  contactClearBtn_ = new QPushButton(tr("Clear on watch"), contactBox);
+  contactPushBtn_->setToolTip(tr("Write the table as the watch contact list (0x72)."));
+  contactClearBtn_->setToolTip(tr("Push an empty contact list to clear the watch."));
+  connect(contactAddBtn_, &QPushButton::clicked, this, &NotifyTab::addContactRow);
+  connect(contactRemoveBtn_, &QPushButton::clicked, this, &NotifyTab::removeSelectedContacts);
+  connect(contactPushBtn_, &QPushButton::clicked, this, &NotifyTab::pushContacts);
+  connect(contactClearBtn_, &QPushButton::clicked, this, &NotifyTab::clearContactsOnWatch);
+  contactBtns->addWidget(contactAddBtn_);
+  contactBtns->addWidget(contactRemoveBtn_);
+  contactBtns->addStretch();
+  contactBtns->addWidget(contactPushBtn_);
+  contactBtns->addWidget(contactClearBtn_);
+  contactLay->addLayout(contactBtns);
+  lay->addWidget(contactBox);
+
   auto* musicBox = new QGroupBox(tr("Music (now playing)"), this);
   auto* form = new QFormLayout(musicBox);
   musicTitle_ = new QLineEdit(musicBox);
@@ -153,6 +189,8 @@ void NotifyTab::setConnected(bool connected) {
   endCallBtn_->setEnabled(connected);
   musicPushBtn_->setEnabled(connected);
   if (musicPullBtn_) musicPullBtn_->setEnabled(true); // MPRIS does not need the watch
+  contactPushBtn_->setEnabled(connected);
+  contactClearBtn_->setEnabled(connected);
   if (!connected) {
     status_->setText(tr("Connect to a watch to send notifications."));
     musicLastAction_->setText(tr("Watch keys: —"));
@@ -241,4 +279,69 @@ void NotifyTab::pullFromMpris() {
   musicPlaying_->setChecked(np->playing);
   musicVolume_->setValue(np->volume);
   status_->setText(tr("Filled from system player."));
+}
+
+void NotifyTab::addContactRow() {
+  const int row = contactsTable_->rowCount();
+  contactsTable_->insertRow(row);
+  contactsTable_->setItem(row, 0, new QTableWidgetItem);
+  contactsTable_->setItem(row, 1, new QTableWidgetItem);
+  contactsTable_->editItem(contactsTable_->item(row, 0));
+}
+
+void NotifyTab::removeSelectedContacts() {
+  const auto rows = contactsTable_->selectionModel()->selectedRows();
+  QList<int> indexes;
+  for (const QModelIndex& i : rows) indexes.push_back(i.row());
+  std::sort(indexes.begin(), indexes.end(), std::greater<int>());
+  for (int r : indexes) contactsTable_->removeRow(r);
+}
+
+void NotifyTab::pushContacts() {
+  if (!connected_) return;
+  std::vector<proto::Contact> list;
+  for (int r = 0; r < contactsTable_->rowCount(); ++r) {
+    const auto* nameItem = contactsTable_->item(r, 0);
+    const auto* phoneItem = contactsTable_->item(r, 1);
+    const QString name = nameItem ? nameItem->text().trimmed() : QString();
+    const QString phone = phoneItem ? phoneItem->text().trimmed() : QString();
+    if (name.isEmpty() && phone.isEmpty()) continue;
+    proto::Contact c;
+    c.id = static_cast<uint8_t>(list.size() + 1);
+    c.name = name.toStdString();
+    c.phone = phone.toStdString();
+    list.push_back(std::move(c));
+  }
+  if (list.empty()) {
+    status_->setText(tr("Add at least one contact, or use Clear on watch."));
+    return;
+  }
+  auto packets = std::make_shared<std::vector<proto::Bytes>>(proto::contactWritePackets(list));
+  auto index = std::make_shared<size_t>(0);
+  auto sendNext = std::make_shared<std::function<void()>>();
+  *sendNext = [this, packets, index, sendNext]() {
+    if (!connected_ || *index >= packets->size()) return;
+    bridge_.send((*packets)[(*index)++]);
+    if (*index < packets->size()) QTimer::singleShot(120, this, *sendNext);
+  };
+  (*sendNext)();
+  status_->setText(tr("Contacts pushed (%1 entries, %2 packet(s)).")
+                       .arg(list.size())
+                       .arg(packets->size()));
+}
+
+void NotifyTab::clearContactsOnWatch() {
+  if (!connected_) return;
+  // Empty list write clears the stored contacts (same as CLI --contacts '').
+  auto packets = std::make_shared<std::vector<proto::Bytes>>(
+      proto::contactWritePackets({}));
+  auto index = std::make_shared<size_t>(0);
+  auto sendNext = std::make_shared<std::function<void()>>();
+  *sendNext = [this, packets, index, sendNext]() {
+    if (!connected_ || *index >= packets->size()) return;
+    bridge_.send((*packets)[(*index)++]);
+    if (*index < packets->size()) QTimer::singleShot(120, this, *sendNext);
+  };
+  (*sendNext)();
+  status_->setText(tr("Cleared contacts on the watch (%1 packet(s)).").arg(packets->size()));
 }

@@ -61,6 +61,7 @@ music, …) and which message types the watch shows. Refresh / Apply.
 
 - Text messages (choose type; the type must be enabled under Settings).
 - Incoming-call screen (ring / end).
+- **Contacts**: edit a name/phone table and push (or clear) the list on the watch.
 - **Music / now-playing**: push title, artist, album, play state and
   volume to the watch; media keys from the watch are shown in the tab.
 - **MPRIS** (optional): forward those keys to the system media player;
