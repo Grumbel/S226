@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-77.1-about-https-94f9363.bundle`
-- Tip: `4319e34` About dialog full https URL
+- Latest bundle: artifacts `s226-79.1-menu-icons-94f9363.bundle`
+- Tip: `35d388e` menu and tray action icons
 
 ## Done in this sequence
 
