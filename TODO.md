@@ -3,23 +3,38 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-51.1-fix-notify-build-94f9363.bundle`
-- Tip: `19751ec` fix notify tooltip + socket notifier build
+- Latest bundle: (pending) docs refresh
+- Tip: README / man / AppStream / AGENTS brought up to date
 
 ## Done in this sequence
 
 ### GUI
-- Tabs + tray + music + MPRIS + sleep + weather settings
-- Desktop notification forward (session-bus eavesdrop → message type other)
+- Tabs: Live, Settings, Alarms, Notify, History, Sleep, Workouts
+- Settings: weather status, features, message types, …
+- Notify: messages, call, music, MPRIS forward/pull/auto-push, desktop
+  notification forward (`org.freedesktop.Notifications`)
+- System tray; single-instance (override `--multi-instance`)
 
 ### Library / CLI
-- Sleep, weather status, contacts, music
+- Sleep (`e0`), weather status (`c8`), contacts push (`72`), music (`99`)
+- CLI: `--sleep`, `--weather`, `--contacts`, `--contact-delete`, `--music`, …
+
+### Docs
+- README, man s226-hr / s226-cli, AppStream, AGENTS, PROTOCOL notes
 
 ## User-side
 
-- Hardware smoke-test including desktop notify forward
-  (needs session-bus eavesdrop; ensure message type "other" is enabled)
+- Hardware smoke-test: sleep data, weather toggle, contacts write, MPRIS,
+  desktop notification forward (message type **other** enabled)
 
-## Protocol gaps
+## Protocol gaps (research)
 
-- Weather forecast content, SpO₂ history, GPS, contact read CRC
+- Weather *forecast content* push (condition codes incomplete)
+- SpO₂ history, GPS track download
+- Classic sleep stage polarity / multi-nap edges
+- Contact list *read* CRC
+
+## Suggested next work
+
+- Weather forecast content push (needs condition-code table or capture)
+- Contacts GUI if write is confirmed on hardware

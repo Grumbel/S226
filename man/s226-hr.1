@@ -9,6 +9,7 @@ s226-hr \- live heart-rate display for the S226 fitness watch
 .IR address ]
 .RB [ \-\-no\-connect ]
 .RB [ \-f ]
+.RB [ \-\-multi\-instance ]
 .RI [ "Qt options" ]
 .SH DESCRIPTION
 .B s226-hr
@@ -46,11 +47,16 @@ The status bar shows the watch's battery charge; its tooltip shows the
 firmware version.
 .PP
 Further tabs (enabled only while connected) expose the rest of the
-watch: settings, alarms, notifications, activity history and sport-mode
-workouts.
+watch: settings, alarms, notifications, activity history, sleep and
+sport-mode workouts.
 See
 .B TABS
 below.
+.PP
+Only one instance runs by default; a second start raises the existing
+window. Use
+.B \-\-multi\-instance
+for parallel instances.
 .PP
 The program does not use BlueZ.
 It drives a USB Bluetooth controller directly over raw HCI and detaches
@@ -152,8 +158,8 @@ Readings are logged to a daily CSV file (see
 .B Settings
 Read and write the watch configuration: sedentary reminder, heart-rate
 alarm, screen-on time, brightness, countdown preset, watch face, personal
-data, feature toggles (metric, 24h, auto-HR, stopwatch, and so on) and
-which message types the watch displays.
+data, weather status (on/off), feature toggles (metric, 24h, auto-HR,
+stopwatch, music, and so on) and which message types the watch displays.
 Use
 .B Refresh
 to load current values and

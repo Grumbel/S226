@@ -6,9 +6,11 @@ Linux tools for the **S226 fitness watch** (H-Band / Veepoo), based on a
 reverse-engineered Bluetooth LE protocol. No phone and no H-Band app are
 needed.
 
-- **`s226-hr`**: Qt GUI — tabbed UI for live HR, settings, alarms, notify,
-  history, sleep and workouts (same protocol surface as the CLI).
-- **`s226-cli`**: Terminal tool for the same features plus raw `--send`.
+- **`s226-hr`**: Qt GUI — tabbed UI for live HR, settings, alarms, notify
+  (messages, call, music/MPRIS, desktop notifications), history, sleep and
+  workouts; system tray; single-instance by default.
+- **`s226-cli`**: Terminal tool for the same features plus weather status,
+  contacts push and raw `--send`.
 - **`s226ble`**: C++20 library (libusb + minimal HCI/L2CAP/ATT host) used by both.
 - Python research tools (`s226.py` via BlueZ/Bleak, `s226_bumble.py` via Bumble raw HCI) and protocol notes.
 
