@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-81.1-classic-icons-94f9363.bundle`
-- Tip: `69bf6b9` classic shaded icons + icon+text buttons
+- Latest bundle: artifacts `s226-83.1-action-icons-94f9363.bundle`
+- Tip: `aeb663a` action icons on all major buttons
 
 ## Done in this sequence
 
