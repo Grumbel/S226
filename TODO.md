@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: (pending) docs refresh
-- Tip: README / man / AppStream / AGENTS brought up to date
+- Latest bundle: artifacts `s226-53.1-docs-refresh-94f9363.bundle`
+- Tip: `5a97fa0` README/man/AppStream/AGENTS refresh
 
 ## Done in this sequence
 
