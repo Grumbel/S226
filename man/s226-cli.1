@@ -86,6 +86,13 @@ Print the watch's activity log in 5-minute slots as CSV (columns
 .I day
 is 0 for today (the default), 1 for yesterday, and so on.
 .TP
+.BR \-\-sleep [ =\fIday\fR ]
+Print sleep sessions for
+.I day
+(0 = last night / today, the default).
+Each session shows fall-asleep and wake times, deep/light/total minutes,
+quality, wake count, and a stage curve when present.
+.TP
 .B \-\-workouts
 Print the workouts recorded in the watch's sport mode (up to three):
 a summary line with start, end and totals, then one CSV row per minute.
@@ -205,6 +212,7 @@ HR alarm:      on, below 52 or above 115 bpm
 Screen on:     10 s (5-30 s)
 
 $ s226-cli \-\-history=1 > yesterday.csv
+$ s226-cli \-\-sleep=0
 .EE
 .SH SEE ALSO
 .BR s226-hr (1)

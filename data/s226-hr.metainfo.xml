@@ -14,8 +14,8 @@
     <p>
       Connects to an S226 (H-Band / Veepoo) fitness watch over Bluetooth
       LE and exposes the watch through tabs: live heart rate and cadence,
-      settings, alarms, notifications, activity history and sport-mode
-      workouts.
+      settings, alarms, notifications, activity history, sleep and
+      sport-mode workouts.
     </p>
     <ul>
       <li>Large live heart-rate display with optional metronome</li>
@@ -23,7 +23,7 @@
       <li>Daily CSV log of every reading</li>
       <li>On-demand blood-pressure measurement</li>
       <li>Read and change watch settings, alarms and message types</li>
-      <li>Fetch 5-minute activity history and sport-mode workouts</li>
+      <li>Fetch 5-minute activity history, sleep sessions and sport-mode workouts</li>
     </ul>
     <p>
       The app talks to a USB Bluetooth controller directly over raw HCI

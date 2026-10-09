@@ -5,10 +5,10 @@ reverse-engineered Bluetooth LE protocol. No phone and no H-Band app are
 needed.
 
 - **`s226-hr`**: Qt GUI with tabs for live heart rate, settings, alarms,
-  notifications (including now-playing), activity history and workouts.
+  notifications (including now-playing), activity history, sleep and workouts.
   Optional metronome and system-tray support.
 - **`s226-cli`**: the same features in a terminal — heart rate or blood
-  pressure, settings, alarms, messages, music metadata, history,
+  pressure, settings, alarms, messages, music metadata, history, sleep,
   workouts, and raw protocol access.
 - **`s226ble`**: the C++20 library both are built on (libusb + minimal
   HCI/L2CAP/ATT host; no BlueZ).
@@ -60,6 +60,8 @@ screen, or push now-playing metadata; shows media keys from the watch.
 **History** — fetch the watch's 5-minute activity slots for today or a
 previous day.
 
+**Sleep** — sleep sessions (deep/light minutes, quality, stage curve).
+
 **Workouts** — sport-mode sessions with per-minute detail.
 
 Connects on start (`--no-connect` to skip) and reconnects when the
@@ -82,6 +84,7 @@ order after connecting, print to stdout, and exit:
 ```bash
 s226-cli --info --settings              # firmware, battery, settings
 s226-cli --history=1 > yesterday.csv    # 5-minute slots (steps, HR, ...)
+s226-cli --sleep=0                       # last night's sleep sessions
 s226-cli --workouts                     # sport-mode sessions, per minute
 s226-cli --alarms                       # list alarms on the watch
 s226-cli --alarm 1=07:30/mon,tue,wed,thu,fri
@@ -184,6 +187,7 @@ sets the watch clock) right away.
 | `90 01 00` / `90 00 00` | blood pressure start / stop | `90 00 00 <pct>` progress, `90 <sys> <dia> 64` result |
 | `d8 00` | poll today's totals | `d8 00 <steps> <distance> <calories>` (u32 LE) |
 | `d1 01 00 0N` | daily history of day N | one frame per 5-minute slot |
+| `e0 0N` | sleep for day N (0 = last night) | multi-frame; index 0 ends the day |
 | `d4 0N` | workout in slot N (1-3) | header frames, then one per minute |
 | `a0 00` | battery | `a0 00 <0x80\|percent> 00 <bars>` |
 | `e1`, `ac`, `b4`, `a3` | sedentary reminder, HR alarm, screen-on time, personal data | settings echo |

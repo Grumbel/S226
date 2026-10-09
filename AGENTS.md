@@ -7,7 +7,7 @@ reverse-engineered Bluetooth LE protocol. No phone and no H-Band app are
 needed.
 
 - **`s226-hr`**: Qt GUI — tabbed UI for live HR, settings, alarms, notify,
-  history and workouts (same protocol surface as the CLI).
+  history, sleep and workouts (same protocol surface as the CLI).
 - **`s226-cli`**: Terminal tool for the same features plus raw `--send`.
 - **`s226ble`**: C++20 library (libusb + minimal HCI/L2CAP/ATT host) used by both.
 - Python research tools (`s226.py` via BlueZ/Bleak, `s226_bumble.py` via Bumble raw HCI) and protocol notes.
@@ -42,6 +42,7 @@ License: keep existing (check headers; prefer GPLv3+ / REUSE / SPDX for new file
 | `app/alarms_tab.*` | Alarm list + weekday picker dialog |
 | `app/notify_tab.*` | Messages and incoming call |
 | `app/history_tab.*` | 5-minute activity slots |
+| `app/sleep_tab.*` | Sleep sessions (0xE0) |
 | `app/workouts_tab.*` | Sport-mode sessions |
 | `cli/` | CLI (`Session` + Actions; same protocol helpers) |
 | `data/`, `man/`, `udev/` | Desktop integration, man pages, udev rule |

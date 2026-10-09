@@ -376,11 +376,18 @@ OK, 2/3 set password failed/OK, 4/5 read failed/OK, 6 check OK and time
 set. Byte 11 is the wrist-turn function, 18 find-phone and 19 wear
 check (0 supported and off, 1 on, 2 not supported).
 
-The APK also describes sleep (`e0`) as multi-frame: `e0 <index, 0 =
-last> ? <day>` and 16 payload bytes per frame, split into fixed-size
-segments after reassembly. Not verified: this watch had no sleep stored.
-Its description of `d1` as a TLV stream does not match the S226, whose
-`d1` frames have the fixed layout above.
+Sleep (`e0`) is multi-frame. Write `e0 <daysAgo>` (0 = last night /
+today). Each notify is `e0 <packetIndex> <byte2> <day> <16 payload
+bytes>`; **packet index 0 ends the day**. Payloads concatenate into a
+day blob. Protocol type 3 uses outer `0xA1` LE-length items with inner
+TLV (`0xA3` base times/scores/durations, `0xA5` stage curve). Classic
+(type ≠ 3) uses fixed field offsets (deep/light units × 5 minutes).
+Empty days answer with a single end packet and a zero payload. See
+`VeePoo_HBand_BLE_Protocol.md` §5.3. Not fully verified on hardware:
+the capture watch had no sleep stored.
+
+The APK description of `d1` as a TLV stream does not match the S226,
+whose `d1` frames have the fixed layout above.
 
 The APK's description of the bind request matches the capture:
 `a1 <pwd u16 BE> <type> <year BE> mon day hour min sec <24h> 01`, with
