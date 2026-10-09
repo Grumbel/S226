@@ -174,6 +174,14 @@ void SettingsTab::buildUi() {
     form->addWidget(g);
   }
   {
+    auto* g = new QGroupBox(tr("Weather"), formHost_);
+    auto* f = new QFormLayout(g);
+    weatherOn_ = new QCheckBox(tr("Show weather on the watch"), g);
+    weatherOn_->setToolTip(tr("Enables the weather status path (0xC8). Forecast content push is separate."));
+    f->addRow(weatherOn_);
+    form->addWidget(g);
+  }
+  {
     auto* g = new QGroupBox(tr("Features"), formHost_);
     auto* grid = new QGridLayout(g);
     featureChecks_.clear();
@@ -351,6 +359,16 @@ void SettingsTab::refresh() {
             }
             (*next)();
           });
+    } else if (s == 8) {
+      bridge_.request(proto::weatherStatusRead(),
+          [](const proto::Bytes& v) { return proto::decodeWeatherStatus(v).has_value(); },
+          [this, next](std::optional<proto::Bytes> v) {
+            if (v) if (auto w = proto::decodeWeatherStatus(*v)) {
+              weatherOn_->setChecked(w->open);
+              weatherOn_->setEnabled(w->ok || w->open || !w->open);
+            }
+            (*next)();
+          });
     } else {
       setBusy(false);
       status_->setText(tr("Settings loaded."));
@@ -460,6 +478,10 @@ void SettingsTab::apply() {
       p.sleepGoalMinutes = personSleepGoal_->value();
       bridge_.request(proto::personInfoWrite(p),
           [](const proto::Bytes& v) { return proto::isPersonInfoAck(v); },
+          [next, ok](std::optional<proto::Bytes> v) { if (!v) *ok = false; (*next)(); });
+    } else if (s == 9) {
+      bridge_.request(proto::weatherStatusWrite(weatherOn_->isChecked(), 0),
+          [](const proto::Bytes& v) { return proto::decodeWeatherStatus(v).has_value(); },
           [next, ok](std::optional<proto::Bytes> v) { if (!v) *ok = false; (*next)(); });
     } else {
       setBusy(false);

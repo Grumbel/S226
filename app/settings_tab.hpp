@@ -68,6 +68,8 @@ private:
   QSpinBox* personStepGoal_ = nullptr;
   QSpinBox* personSleepGoal_ = nullptr;
 
+  QCheckBox* weatherOn_ = nullptr;
+
   std::vector<QCheckBox*> featureChecks_;
   std::vector<QCheckBox*> messageChecks_;
 };
