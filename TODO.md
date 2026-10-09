@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-40.1-flake-system-94f9363.bundle`
-- Tip: `a0ac894` flake: explicit system (no pkgs.system)
+- Latest bundle: artifacts `s226-42.1-fix-qround-94f9363.bundle`
+- Tip: `16fc138` fix MPRIS qRound for Qt 6.11
 
 ## Done in this sequence
 
