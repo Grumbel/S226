@@ -149,8 +149,8 @@
               pkgs.libusb1
               pkgs.qt6.qtbase
               pkgs.qt6.qtmultimedia
-              pkgs.qt6.qtdbus
               pkgs.qt6.qtsvg # SVG window icon
+              # Qt6 DBus (MPRIS) is part of qtbase; no separate qtdbus attr.
             ];
             cmakeFlags = [ "-DS226_VERSION=${version}" ];
             # Qt Multimedia dlopen()s PipeWire for audio output.
