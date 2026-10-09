@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-24.1-sleep-tracking-94f9363.bundle`
-- Tip:  sleep tracking in library, CLI, GUI (see `git log 94f9363..HEAD`)
+- Latest bundle: artifacts `s226-25.1-sleep-tracking-94f9363.bundle`
+- Tip: `6cb440a` sleep tracking in library, CLI, GUI (see `git log 94f9363..HEAD`)
 
 ## Done in this sequence
 
