@@ -817,6 +817,74 @@ bool workouts(Session& s) {
 
 
 // TITLE[/ARTIST[/ALBUM]] optional ;playing=0|1 ;vol=N
+Action weatherStatus(std::optional<bool> open) {
+  return [open](Session& s) {
+    if (!open) {
+      auto result = s.query<proto::WeatherStatus>(proto::weatherStatusRead(),
+                                                  proto::decodeWeatherStatus);
+      if (!result) return fail("the weather status");
+      std::printf("Weather: %s (type %d)%s\n", result->open ? "on" : "off", result->type,
+                  result->ok ? "" : " [not ok]");
+      return true;
+    }
+    auto result = s.query<proto::WeatherStatus>(proto::weatherStatusWrite(*open, 0),
+                                                proto::decodeWeatherStatus);
+    if (!result) return fail("the weather status");
+    std::printf("Weather: %s (type %d)%s\n", result->open ? "on" : "off", result->type,
+                result->ok ? "" : " [not ok]");
+    return result->open == *open;
+  };
+}
+
+// "Name:Phone,Name2:Phone2" or empty string to clear.
+Action contactsPush(std::string spec) {
+  return [spec](Session& s) {
+    std::vector<proto::Contact> list;
+    if (!spec.empty()) {
+      size_t pos = 0;
+      uint8_t id = 1;
+      while (pos < spec.size()) {
+        size_t comma = spec.find(',', pos);
+        if (comma == std::string::npos) comma = spec.size();
+        std::string item = spec.substr(pos, comma - pos);
+        pos = comma + 1;
+        size_t colon = item.find(':');
+        if (colon == std::string::npos) {
+          std::fprintf(stderr, "Contact must be Name:Phone (got %s)\n", item.c_str());
+          return false;
+        }
+        proto::Contact c;
+        c.id = id++;
+        c.name = item.substr(0, colon);
+        c.phone = item.substr(colon + 1);
+        list.push_back(std::move(c));
+      }
+    }
+    auto packets = proto::contactWritePackets(list);
+    for (const auto& p : packets) {
+      s.watch().send(p);
+      std::this_thread::sleep_for(120ms);
+    }
+    if (list.empty())
+      std::printf("Contacts: cleared (%zu packet(s))\n", packets.size());
+    else {
+      std::printf("Contacts: pushed %zu entr%s (%zu packet(s))\n", list.size(),
+                  list.size() == 1 ? "y" : "ies", packets.size());
+      for (const auto& c : list)
+        std::printf("  %u  %s  %s\n", c.id, c.name.c_str(), c.phone.c_str());
+    }
+    return true;
+  };
+}
+
+Action contactDelete(int id) {
+  return [id](Session& s) {
+    s.watch().send(proto::contactDelete(static_cast<uint8_t>(id)));
+    std::printf("Contact delete id %d sent\n", id);
+    return true;
+  };
+}
+
 Action music(std::string spec) {
   return [spec](Session& s) {
     proto::NowPlaying np;
@@ -933,7 +1001,11 @@ void usage(const char* argv0) {
       "      --person H,W,AGE,m|f,GOAL[,SLEEP]\n"
       "                          height cm, weight kg, age, sex, step goal,\n"
       "                          sleep goal in minutes (default 480)\n"
-      "      --music TITLE[/ARTIST[/ALBUM]][;playing=0|1][;vol=N]\n                          push now-playing metadata to the watch\n      --send HEX          send a raw command and print the replies\n",
+      "      --weather [on|off]  show or set weather status on the watch\n"
+      "      --contacts [NAME:PHONE,...]\n                          push contacts (empty value clears the list)\n"
+      "      --contact-delete ID delete contact by id\n"
+      "      --music TITLE[/ARTIST[/ALBUM]][;playing=0|1][;vol=N]\n                          push now-playing metadata to the watch\n"
+      "      --send HEX          send a raw command and print the replies\n",
       argv0);
 }
 
@@ -968,6 +1040,9 @@ int main(int argc, char** argv) {
     OptBrightness,
     OptCountdown,
     OptWatchFace,
+    OptWeather,
+    OptContacts,
+    OptContactDelete,
     OptMusic,
   };
   const option longopts[] = {{"list", no_argument, nullptr, 'l'},
@@ -998,6 +1073,9 @@ int main(int argc, char** argv) {
                              {"brightness", required_argument, nullptr, OptBrightness},
                              {"countdown", required_argument, nullptr, OptCountdown},
                              {"watch-face", required_argument, nullptr, OptWatchFace},
+                             {"weather", optional_argument, nullptr, OptWeather},
+                             {"contacts", optional_argument, nullptr, OptContacts},
+                             {"contact-delete", required_argument, nullptr, OptContactDelete},
                              {"music", required_argument, nullptr, OptMusic},
                              {"send", required_argument, nullptr, OptSend},
                              {nullptr, 0, nullptr, 0}};
@@ -1123,6 +1201,29 @@ int main(int argc, char** argv) {
       auto want = parseMessageTypes(optarg);
       if (!want) return bad("message types", optarg);
       actions.push_back(setMessageTypes(*want));
+      break;
+    }
+    case OptWeather: {
+      if (!optarg) {
+        actions.push_back(weatherStatus(std::nullopt));
+      } else if (std::string(optarg) == "on") {
+        actions.push_back(weatherStatus(true));
+      } else if (std::string(optarg) == "off") {
+        actions.push_back(weatherStatus(false));
+      } else {
+        return bad("weather (on|off)", optarg);
+      }
+      break;
+    }
+    case OptContacts:
+      actions.push_back(contactsPush(optarg ? optarg : ""));
+      break;
+    case OptContactDelete: {
+      int id = 0;
+      char tail = 0;
+      if (std::sscanf(optarg, "%d%c", &id, &tail) != 1 || id < 1 || id > 255)
+        return bad("contact id (1-255)", optarg);
+      actions.push_back(contactDelete(id));
       break;
     }
     case OptMusic: actions.push_back(music(optarg)); break;
