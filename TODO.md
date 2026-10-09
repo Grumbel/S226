@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-36.1-mpris-autopush-94f9363.bundle`
-- Tip: `d68af8a` MPRIS auto-push track changes
+- Latest bundle: artifacts `s226-38.1-fix-flake-qtdbus-94f9363.bundle`
+- Tip: `b451835` fix flake qtdbus (DBus via qtbase)
 
 ## Done in this sequence
 
