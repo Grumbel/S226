@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: (pending) MPRIS after weather/contacts/sleep
-- Tip: optional MPRIS media-key bridge
+- Latest bundle: artifacts `s226-33.1-mpris-94f9363.bundle`
+- Tip: `fd2c55a` optional MPRIS media-key bridge
 
 ## Done in this sequence
 
