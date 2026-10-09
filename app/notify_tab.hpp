@@ -6,6 +6,7 @@
 
 class WatchBridge;
 class MprisController;
+class NotificationForwarder;
 class QLineEdit;
 class QComboBox;
 class QPushButton;
@@ -16,7 +17,8 @@ class QSpinBox;
 class NotifyTab : public QWidget {
   Q_OBJECT
 public:
-  explicit NotifyTab(WatchBridge& bridge, MprisController* mpris, QWidget* parent = nullptr);
+  explicit NotifyTab(WatchBridge& bridge, MprisController* mpris,
+                     NotificationForwarder* desktopNotify, QWidget* parent = nullptr);
   void setConnected(bool connected);
 
 private:
@@ -30,6 +32,7 @@ private:
 
   WatchBridge& bridge_;
   MprisController* mpris_ = nullptr;
+  NotificationForwarder* desktopNotify_ = nullptr;
   bool connected_ = false;
   QLineEdit* messageEdit_ = nullptr;
   QComboBox* messageType_ = nullptr;
@@ -46,6 +49,7 @@ private:
   QPushButton* musicPullBtn_ = nullptr;
   QCheckBox* mprisForward_ = nullptr;
   QCheckBox* mprisAutoPush_ = nullptr;
+  QCheckBox* desktopNotifyForward_ = nullptr;
   QLabel* musicLastAction_ = nullptr;
   QLabel* status_ = nullptr;
 };

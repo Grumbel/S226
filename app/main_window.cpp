@@ -38,6 +38,7 @@
 #include "workouts_tab.hpp"
 #include "sleep_tab.hpp"
 #include "mpris_controller.hpp"
+#include "notification_forwarder.hpp"
 #include "s226/usb.hpp"
 
 namespace {
@@ -73,6 +74,7 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
   setWindowTitle(tr("S226 Heart Rate"));
   setMinimumSize(720, 520);
   mpris_ = new MprisController(this);
+  desktopNotify_ = new NotificationForwarder(this);
   buildUi();
   buildTray();
   refreshControllers();
@@ -86,6 +88,38 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
     if (!bridge_.isConnected()) return;
     const auto packets = s226::protocol::nowPlayingPackets(np);
     for (const auto& pkt : packets) bridge_.send(pkt);
+  });
+  connect(desktopNotify_, &NotificationForwarder::notificationReceived, this,
+          [this](const QString& app, const QString& summary, const QString& body) {
+            if (!bridge_.isConnected()) return;
+            QString text;
+            if (!summary.isEmpty() && !body.isEmpty())
+              text = summary + QStringLiteral(": ") + body;
+            else if (!summary.isEmpty())
+              text = summary;
+            else
+              text = body;
+            if (!app.isEmpty() && !text.isEmpty())
+              text = app + QStringLiteral(" — ") + text;
+            else if (!app.isEmpty())
+              text = app;
+            text = text.simplified();
+            if (text.isEmpty()) return;
+            if (text.size() > 120) text = text.left(117) + QStringLiteral("…");
+            // Rate-limit identical messages.
+            static QString last;
+            static qint64 lastMs = 0;
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (text == last && now - lastMs < 2500) return;
+            last = text;
+            lastMs = now;
+            for (const auto& pkt : s226::protocol::messagePackets(text.toStdString(),
+                                                                  s226::protocol::MessageType::Other))
+              bridge_.send(pkt);
+            appendLog(tr("Desktop notification → watch: %1").arg(text));
+          });
+  connect(desktopNotify_, &NotificationForwarder::listenFailed, this, [this](const QString& reason) {
+    appendLog(tr("Desktop notification forward: %1").arg(reason));
   });
   connect(&bridge_, &WatchBridge::logMessage, this, &MainWindow::appendLog);
   connect(&bridge_, &WatchBridge::bloodPressureProgress, this, [this](int pct) {
@@ -212,7 +246,7 @@ void MainWindow::buildUi() {
   tabs_->addTab(settingsTab_, tr("Settings"));
   alarmsTab_ = new AlarmsTab(bridge_, tabs_);
   tabs_->addTab(alarmsTab_, tr("Alarms"));
-  notifyTab_ = new NotifyTab(bridge_, mpris_, tabs_);
+  notifyTab_ = new NotifyTab(bridge_, mpris_, desktopNotify_, tabs_);
   tabs_->addTab(notifyTab_, tr("Notify"));
   historyTab_ = new HistoryTab(bridge_, tabs_);
   tabs_->addTab(historyTab_, tr("History"));

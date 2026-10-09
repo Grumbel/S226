@@ -152,6 +152,7 @@
             ];
             buildInputs = [
               pkgs.libusb1
+              pkgs.dbus
               pkgs.qt6.qtbase
               pkgs.qt6.qtmultimedia
               pkgs.qt6.qtsvg # SVG window icon

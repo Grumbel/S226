@@ -58,7 +58,7 @@ shows. Refresh / Apply.
 screen, or push now-playing metadata; shows media keys from the watch.
 Optional MPRIS forwarding maps those keys to the system media player,
 **From player** fills the form from the active player, and track changes
-can be pushed to the watch automatically.
+can be pushed to the watch automatically. Desktop notifications (org.freedesktop.Notifications) can be forwarded to the watch as message type "other".
 
 **History** — fetch the watch's 5-minute activity slots for today or a
 previous day.

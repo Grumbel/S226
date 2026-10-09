@@ -42,6 +42,7 @@ License: keep existing (check headers; prefer GPLv3+ / REUSE / SPDX for new file
 | `app/alarms_tab.*` | Alarm list + weekday picker dialog |
 | `app/notify_tab.*` | Messages, call, music, MPRIS keys |
 | `app/mpris_controller.*` | Optional MPRIS media-key bridge |
+| `app/notification_forwarder.*` | Desktop notification → watch |
 | `app/history_tab.*` | 5-minute activity slots |
 | `app/sleep_tab.*` | Sleep sessions (0xE0) |
 | `app/workouts_tab.*` | Sport-mode sessions |

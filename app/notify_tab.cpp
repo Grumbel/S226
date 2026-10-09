@@ -13,11 +13,13 @@
 
 #include "watch_bridge.hpp"
 #include "mpris_controller.hpp"
+#include "notification_forwarder.hpp"
 
 namespace proto = s226::protocol;
 
-NotifyTab::NotifyTab(WatchBridge& bridge, MprisController* mpris, QWidget* parent)
-    : QWidget(parent), bridge_(bridge), mpris_(mpris) {
+NotifyTab::NotifyTab(WatchBridge& bridge, MprisController* mpris,
+                     NotificationForwarder* desktopNotify, QWidget* parent)
+    : QWidget(parent), bridge_(bridge), mpris_(mpris), desktopNotify_(desktopNotify) {
   buildUi();
   setConnected(false);
   connect(&bridge_, &WatchBridge::musicControl, this, &NotifyTab::onMusicControl);
@@ -45,6 +47,20 @@ void NotifyTab::buildUi() {
   msgRow->addWidget(messageType_);
   msgRow->addWidget(sendBtn_);
   lay->addWidget(msgBox);
+
+  desktopNotifyForward_ = new QCheckBox(tr("Forward desktop notifications to the watch"), this);
+  desktopNotifyForward_->setToolTip(
+      tr("When enabled and connected, org.freedesktop.Notifications messages "
+         "(most Linux apps) are shown on the watch as type "other". "
+         "Requires session-bus eavesdrop permission."));
+  if (desktopNotify_) {
+    desktopNotifyForward_->setChecked(desktopNotify_->isEnabled());
+    connect(desktopNotifyForward_, &QCheckBox::toggled, desktopNotify_,
+            &NotificationForwarder::setEnabled);
+  } else {
+    desktopNotifyForward_->setEnabled(false);
+  }
+  lay->addWidget(desktopNotifyForward_);
 
   auto* callBox = new QGroupBox(tr("Incoming call"), this);
   auto* callRow = new QHBoxLayout(callBox);
