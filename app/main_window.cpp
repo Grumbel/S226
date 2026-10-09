@@ -557,7 +557,10 @@ void MainWindow::checkStale() {
   if (sinceSample_.isValid() && sinceSample_.elapsed() > kStaleMs) {
     view_->setStale(true);
     metronome_.setBpm(0);
-    if (state_ == s226::WatchState::Connected) view_->setStatus(tr("Waiting for a reading..."));
+    if (state_ == s226::WatchState::Connected) {
+      // Only prompt for a reading while measurement is active.
+      view_->setStatus(hrRunning_ ? tr("Waiting for a reading...") : tr("Heart rate stopped"));
+    }
     sinceSample_.invalidate();
   }
 }
