@@ -40,7 +40,8 @@ License: keep existing (check headers; prefer GPLv3+ / REUSE / SPDX for new file
 | `app/main_window.*` | Tab shell, connection toolbar, Live tab |
 | `app/settings_tab.*` | Settings form (Refresh / Apply) |
 | `app/alarms_tab.*` | Alarm list + weekday picker dialog |
-| `app/notify_tab.*` | Messages and incoming call |
+| `app/notify_tab.*` | Messages, call, music, MPRIS keys |
+| `app/mpris_controller.*` | Optional MPRIS media-key bridge |
 | `app/history_tab.*` | 5-minute activity slots |
 | `app/sleep_tab.*` | Sleep sessions (0xE0) |
 | `app/workouts_tab.*` | Sport-mode sessions |

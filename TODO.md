@@ -3,40 +3,37 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-30.1-weather-contacts-94f9363.bundle`
-- Tip: `c2dbc4b` weather status + contacts (see `git log 94f9363..HEAD`)
+- Latest bundle: (pending) MPRIS after weather/contacts/sleep
+- Tip: optional MPRIS media-key bridge
 
 ## Done in this sequence
 
 ### GUI feature parity with CLI
 - Tabs: Live, Settings, Alarms, Notify, History, Sleep, Workouts
-- Settings includes weather status on/off
+- Settings: weather status on/off among other settings
 - System tray, music now-playing, media keys
+- Optional MPRIS: forward watch keys to system player; pull track into Notify form
 
 ### Library / CLI
-- Sleep: `sleepRead`, `decodeSleepFrame`, `decodeSleepDay` (classic + V1)
-- Weather status: `weatherStatusRead` / `Write` / `decodeWeatherStatus`
-- Contacts: `contactWritePackets`, `contactDelete`, `contactMove`
-- CLI `--sleep`, `--weather [on|off]`, `--contacts`, `--contact-delete`
+- Sleep, weather status, contacts push
+- CLI `--sleep`, `--weather`, `--contacts`, `--contact-delete`
 
 ### Docs
-- PROTOCOL.md, man, README for sleep / weather / contacts
+- PROTOCOL, man, README, AGENTS for the above
 
 ## User-side
 
-- Hardware smoke-test: sleep with real data; weather on/off; contacts push
-  (contacts read returned no reply on one S226 capture — write may still work)
+- Hardware smoke-test: sleep, weather, contacts write, MPRIS with a playing app
 
 ## Protocol gaps (research)
 
-- 0xA7 dump; D1 bytes 14-16/18; fee7/HID
-- Weather *content* push (forecast TLV / condition codes) — framing only
+- Weather forecast content push (condition codes)
 - SpO₂ history, GPS track download
-- Classic sleep stage polarity / multi-nap edges
-- Contact list *read* CRC algorithm
+- Classic sleep polarity / multi-nap edges
+- Contact list read CRC
 
 ## Suggested next work
 
 - Weather forecast content push (needs condition-code table or capture)
-- Optional MPRIS bridge for watch media keys
 - Contacts GUI if write is confirmed on hardware
+- Auto-push MPRIS metadata to the watch on track change
