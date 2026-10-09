@@ -28,6 +28,7 @@ class NotifyTab;
 class HistoryTab;
 class WorkoutsTab;
 class SleepTab;
+class MprisController;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -39,6 +40,7 @@ public:
 
   void connectWatch();
   void disconnectWatch();
+  MprisController* mpris() const { return mpris_; }
 
 protected:
   void closeEvent(QCloseEvent* event) override;
@@ -65,6 +67,7 @@ private:
 
   WatchBridge bridge_;
   Metronome metronome_;
+  MprisController* mpris_ = nullptr;
 
   QTabWidget* tabs_ = nullptr;
   BpmView* view_ = nullptr;

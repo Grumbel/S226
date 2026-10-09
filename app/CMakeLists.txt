@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia DBus)
 qt_standard_project_setup()
 
 qt_add_executable(s226-hr
@@ -15,13 +15,14 @@ qt_add_executable(s226-hr
   history_tab.cpp
   workouts_tab.cpp
   sleep_tab.cpp
+  mpris_controller.cpp
 )
 qt_add_resources(s226-hr icons
   PREFIX /
   BASE ../data/icons
   FILES ../data/icons/s226-hr.svg
 )
-target_link_libraries(s226-hr PRIVATE s226ble Qt6::Widgets Qt6::Multimedia)
+target_link_libraries(s226-hr PRIVATE s226ble Qt6::Widgets Qt6::Multimedia Qt6::DBus)
 target_compile_definitions(s226-hr PRIVATE S226_VERSION="${S226_VERSION}")
 target_compile_options(s226-hr PRIVATE -Wall -Wextra)
 

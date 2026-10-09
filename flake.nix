@@ -149,6 +149,7 @@
               pkgs.libusb1
               pkgs.qt6.qtbase
               pkgs.qt6.qtmultimedia
+              pkgs.qt6.qtdbus
               pkgs.qt6.qtsvg # SVG window icon
             ];
             cmakeFlags = [ "-DS226_VERSION=${version}" ];

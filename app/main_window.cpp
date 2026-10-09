@@ -37,6 +37,7 @@
 #include "trend_graph.hpp"
 #include "workouts_tab.hpp"
 #include "sleep_tab.hpp"
+#include "mpris_controller.hpp"
 #include "s226/usb.hpp"
 
 namespace {
@@ -71,6 +72,7 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
     : QMainWindow(parent), controllerOverride_(controllerOverride) {
   setWindowTitle(tr("S226 Heart Rate"));
   setMinimumSize(720, 520);
+  mpris_ = new MprisController(this);
   buildUi();
   buildTray();
   refreshControllers();
@@ -78,6 +80,8 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
 
   connect(&bridge_, &WatchBridge::stateChanged, this, &MainWindow::onStateChanged);
   connect(&bridge_, &WatchBridge::heartRate, this, &MainWindow::onHeartRate);
+  connect(&bridge_, &WatchBridge::musicControl, mpris_,
+          &MprisController::handleWatchAction);
   connect(&bridge_, &WatchBridge::logMessage, this, &MainWindow::appendLog);
   connect(&bridge_, &WatchBridge::bloodPressureProgress, this, [this](int pct) {
     view_->setSecondary(tr("Blood pressure %1%").arg(pct));
@@ -203,7 +207,7 @@ void MainWindow::buildUi() {
   tabs_->addTab(settingsTab_, tr("Settings"));
   alarmsTab_ = new AlarmsTab(bridge_, tabs_);
   tabs_->addTab(alarmsTab_, tr("Alarms"));
-  notifyTab_ = new NotifyTab(bridge_, tabs_);
+  notifyTab_ = new NotifyTab(bridge_, mpris_, tabs_);
   tabs_->addTab(notifyTab_, tr("Notify"));
   historyTab_ = new HistoryTab(bridge_, tabs_);
   tabs_->addTab(historyTab_, tr("History"));

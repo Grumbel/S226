@@ -87,10 +87,25 @@ void NotifyTab::buildUi() {
       tr("Send now-playing metadata so the watch can show the track "
          "(enable the music feature in Settings if needed)"));
   connect(musicPushBtn_, &QPushButton::clicked, this, &NotifyTab::pushNowPlaying);
+  musicPullBtn_ = new QPushButton(tr("From player"), musicBox);
+  musicPullBtn_->setToolTip(tr("Fill the fields from the active MPRIS media player"));
+  connect(musicPullBtn_, &QPushButton::clicked, this, &NotifyTab::pullFromMpris);
   musicLastAction_ = new QLabel(tr("Watch keys: —"), musicBox);
   musicLastAction_->setToolTip(tr("Last media key received from the watch"));
   musicRow->addWidget(musicPushBtn_);
+  musicRow->addWidget(musicPullBtn_);
   musicRow->addWidget(musicLastAction_, 1);
+  mprisForward_ = new QCheckBox(tr("Forward watch media keys to system player (MPRIS)"), musicBox);
+  mprisForward_->setToolTip(
+      tr("When enabled, Next / Previous / Play-Pause from the watch control the "
+         "active MPRIS player (e.g. browsers, music apps)."));
+  if (mpris_) {
+    mprisForward_->setChecked(mpris_->forwardKeys());
+    connect(mprisForward_, &QCheckBox::toggled, mpris_, &MprisController::setForwardKeys);
+  } else {
+    mprisForward_->setEnabled(false);
+  }
+  form->addRow(mprisForward_);
   form->addRow(musicRow);
   lay->addWidget(musicBox);
 
@@ -106,6 +121,7 @@ void NotifyTab::setConnected(bool connected) {
   callBtn_->setEnabled(connected);
   endCallBtn_->setEnabled(connected);
   musicPushBtn_->setEnabled(connected);
+  if (musicPullBtn_) musicPullBtn_->setEnabled(true); // MPRIS does not need the watch
   if (!connected) {
     status_->setText(tr("Connect to a watch to send notifications."));
     musicLastAction_->setText(tr("Watch keys: —"));
@@ -170,6 +186,28 @@ void NotifyTab::pushNowPlaying() {
 }
 
 void NotifyTab::onMusicControl(proto::MusicAction action) {
-  musicLastAction_->setText(tr("Watch keys: %1").arg(QString::fromUtf8(proto::toString(action))));
-  status_->setText(tr("Watch media key: %1").arg(QString::fromUtf8(proto::toString(action))));
+  const QString name = QString::fromUtf8(proto::toString(action));
+  QString extra;
+  if (mpris_ && mpris_->forwardKeys())
+    extra = mpris_->hasPlayers() ? tr(" → player") : tr(" → no MPRIS player");
+  musicLastAction_->setText(tr("Watch keys: %1%2").arg(name, extra));
+  status_->setText(tr("Watch media key: %1").arg(name));
+}
+
+void NotifyTab::pullFromMpris() {
+  if (!mpris_) {
+    status_->setText(tr("MPRIS helper not available."));
+    return;
+  }
+  auto np = mpris_->currentTrack();
+  if (!np) {
+    status_->setText(tr("No MPRIS player with track metadata found."));
+    return;
+  }
+  musicTitle_->setText(QString::fromStdString(np->title));
+  musicArtist_->setText(QString::fromStdString(np->artist));
+  musicAlbum_->setText(QString::fromStdString(np->album));
+  musicPlaying_->setChecked(np->playing);
+  musicVolume_->setValue(np->volume);
+  status_->setText(tr("Filled from system player."));
 }

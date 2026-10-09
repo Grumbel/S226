@@ -5,6 +5,7 @@
 #include "s226/protocol.hpp"
 
 class WatchBridge;
+class MprisController;
 class QLineEdit;
 class QComboBox;
 class QPushButton;
@@ -15,7 +16,7 @@ class QSpinBox;
 class NotifyTab : public QWidget {
   Q_OBJECT
 public:
-  explicit NotifyTab(WatchBridge& bridge, QWidget* parent = nullptr);
+  explicit NotifyTab(WatchBridge& bridge, MprisController* mpris, QWidget* parent = nullptr);
   void setConnected(bool connected);
 
 private:
@@ -24,9 +25,11 @@ private:
   void sendCall();
   void endCall();
   void pushNowPlaying();
+  void pullFromMpris();
   void onMusicControl(s226::protocol::MusicAction action);
 
   WatchBridge& bridge_;
+  MprisController* mpris_ = nullptr;
   bool connected_ = false;
   QLineEdit* messageEdit_ = nullptr;
   QComboBox* messageType_ = nullptr;
@@ -40,6 +43,8 @@ private:
   QCheckBox* musicPlaying_ = nullptr;
   QSpinBox* musicVolume_ = nullptr;
   QPushButton* musicPushBtn_ = nullptr;
+  QPushButton* musicPullBtn_ = nullptr;
+  QCheckBox* mprisForward_ = nullptr;
   QLabel* musicLastAction_ = nullptr;
   QLabel* status_ = nullptr;
 };
