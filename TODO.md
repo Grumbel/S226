@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-29.1-weather-contacts-94f9363.bundle`
-- Tip: `7130688` weather status + contacts (see `git log 94f9363..HEAD`)
+- Latest bundle: artifacts `s226-30.1-weather-contacts-94f9363.bundle`
+- Tip: `c2dbc4b` weather status + contacts (see `git log 94f9363..HEAD`)
 
 ## Done in this sequence
 
