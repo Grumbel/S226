@@ -1,7 +1,9 @@
 #include "notification_forwarder.hpp"
 
+#include <QMetaObject>
 #include <QSettings>
 #include <QSocketNotifier>
+#include <QTimer>
 #include <QtGlobal>
 
 #include <dbus/dbus.h>
@@ -55,62 +57,53 @@ bool parseNotify(DBusMessage* msg, QString* app, QString* summary, QString* body
     *err = QStringLiteral("empty message");
     return false;
   }
-
   *app = readString(&it);
   if (!dbus_message_iter_next(&it)) {
     *err = QStringLiteral("truncated after app_name");
     return false;
   }
-
   if (dbus_message_iter_get_arg_type(&it) != DBUS_TYPE_UINT32) {
-    *err = QStringLiteral("replaces_id not uint32 (type %1)")
-               .arg(int(dbus_message_iter_get_arg_type(&it)));
+    *err = QStringLiteral("replaces_id not uint32");
     return false;
   }
   skip(&it);
-
   if (dbus_message_iter_get_arg_type(&it) != DBUS_TYPE_STRING) {
     *err = QStringLiteral("app_icon not string");
     return false;
   }
   skip(&it);
-
   *summary = stripMarkup(readString(&it));
   if (!dbus_message_iter_next(&it)) {
     *err = QStringLiteral("truncated after summary");
     return false;
   }
-
   *body = stripMarkup(readString(&it));
   return !summary->isEmpty() || !body->isEmpty() || !app->isEmpty();
 }
 
+// Must not emit Qt signals or touch the GUI from inside libdbus dispatch.
 DBusHandlerResult filterMessage(DBusConnection*, DBusMessage* msg, void* userData) {
   auto* self = static_cast<NotificationForwarder*>(userData);
   if (!self || !self->isEnabled()) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 
-  const int type = dbus_message_get_type(msg);
+  if (dbus_message_get_type(msg) != DBUS_MESSAGE_TYPE_METHOD_CALL) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
   const char* iface = dbus_message_get_interface(msg);
   const char* member = dbus_message_get_member(msg);
-
-  // BecomeMonitor can deliver a wide set of messages depending on rules;
-  // only act on Notifications.Notify method calls.
-  if (type != DBUS_MESSAGE_TYPE_METHOD_CALL || !iface || !member) {
+  if (!iface || !member) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+  if (qstrcmp(iface, "org.freedesktop.Notifications") != 0 || qstrcmp(member, "Notify") != 0)
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-  }
-  if (qstrcmp(iface, "org.freedesktop.Notifications") != 0 || qstrcmp(member, "Notify") != 0) {
-    return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-  }
 
   QString app, summary, body, err;
   if (!parseNotify(msg, &app, &summary, &body, &err)) {
-    emit self->debugLog(QStringLiteral("desktop-notify: Notify parse failed: %1").arg(err));
+    QMetaObject::invokeMethod(
+        self, [self, err]() { emit self->debugLog(QStringLiteral("desktop-notify: parse failed: %1").arg(err)); },
+        Qt::QueuedConnection);
     return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
   }
 
-  emit self->debugLog(QStringLiteral("desktop-notify: seen Notify app=%1 summary=%2 body=%3")
-                          .arg(app, summary, body.left(80)));
-  emit self->notificationReceived(app, summary, body);
+  // Defer to the Qt event loop — never re-enter GUI/BLE from libdbus.
+  QMetaObject::invokeMethod(self, [self, app, summary, body]() { self->emitQueued(app, summary, body); },
+                            Qt::QueuedConnection);
   return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
 }
 
@@ -119,8 +112,7 @@ bool openPrivateBus(DBusConnection** out, QString* reason) {
   dbus_error_init(&err);
   DBusConnection* conn = dbus_bus_get_private(DBUS_BUS_SESSION, &err);
   if (!conn) {
-    *reason = err.message ? QString::fromUtf8(err.message)
-                          : QStringLiteral("Could not connect to the session bus");
+    *reason = err.message ? QString::fromUtf8(err.message) : QStringLiteral("session bus connect failed");
     dbus_error_free(&err);
     return false;
   }
@@ -132,24 +124,41 @@ bool openPrivateBus(DBusConnection** out, QString* reason) {
 } // namespace
 
 NotificationForwarder::NotificationForwarder(QObject* parent) : QObject(parent) {
+  pollTimer_ = new QTimer(this);
+  pollTimer_->setInterval(200);
+  connect(pollTimer_, &QTimer::timeout, this, &NotificationForwarder::dispatch);
+
   QSettings s;
   enabled_ = s.value(QStringLiteral("notify/forwardDesktop"), false).toBool();
   if (enabled_) {
-    startListening();
-    if (!listening_) {
-      enabled_ = false;
-      s.setValue(QStringLiteral("notify/forwardDesktop"), false);
-    }
+    // Defer so construction never blocks the first event-loop spin.
+    QTimer::singleShot(0, this, [this]() {
+      if (!enabled_) return;
+      startListening();
+      if (!listening_) {
+        enabled_ = false;
+        QSettings s;
+        s.setValue(QStringLiteral("notify/forwardDesktop"), false);
+        emit enabledChanged(false);
+      }
+    });
   }
 }
 
 NotificationForwarder::~NotificationForwarder() { stopListening(); }
 
+void NotificationForwarder::emitQueued(const QString& app, const QString& summary, const QString& body) {
+  if (!enabled_) return;
+  emit debugLog(QStringLiteral("desktop-notify: seen Notify app=%1 summary=%2 body=%3")
+                    .arg(app, summary, body.left(80)));
+  emit notificationReceived(app, summary, body);
+}
+
 void NotificationForwarder::setEnabled(bool on) {
   if (enabled_ == on) return;
   if (on) {
     startListening();
-    if (!listening_) return; // listenFailed already emitted
+    if (!listening_) return;
     enabled_ = true;
     QSettings s;
     s.setValue(QStringLiteral("notify/forwardDesktop"), true);
@@ -164,13 +173,11 @@ void NotificationForwarder::setEnabled(bool on) {
 }
 
 bool NotificationForwarder::tryBecomeMonitor() {
-  // dbus-1 Monitoring API (preferred; does not need eavesdrop ACL).
   DBusMessage* call = dbus_message_new_method_call("org.freedesktop.DBus", "/org/freedesktop/DBus",
                                                    "org.freedesktop.DBus.Monitoring", "BecomeMonitor");
   if (!call) return false;
 
-  const char* rules[] = {kMatchRule};
-  const char* rulePtr = rules[0];
+  const char* rulePtr = kMatchRule;
   DBusMessageIter args, array;
   dbus_message_iter_init_append(call, &args);
   if (!dbus_message_iter_open_container(&args, DBUS_TYPE_ARRAY, "s", &array) ||
@@ -185,9 +192,10 @@ bool NotificationForwarder::tryBecomeMonitor() {
     return false;
   }
 
+  // Short timeout so a stuck bus cannot freeze the GUI for long.
   DBusError err;
   dbus_error_init(&err);
-  DBusMessage* reply = dbus_connection_send_with_reply_and_block(dbus_->conn, call, 3000, &err);
+  DBusMessage* reply = dbus_connection_send_with_reply_and_block(dbus_->conn, call, 800, &err);
   dbus_message_unref(call);
   if (!reply) {
     const QString reason =
@@ -230,7 +238,6 @@ void NotificationForwarder::startListening() {
     return;
   }
 
-  // Prefer BecomeMonitor; fall back to classic eavesdrop match.
   if (!tryBecomeMonitor() && !tryEavesdropMatch()) {
     dbus_connection_close(dbus_->conn);
     dbus_connection_unref(dbus_->conn);
@@ -238,8 +245,7 @@ void NotificationForwarder::startListening() {
     dbus_ = nullptr;
     listenMode_.clear();
     emit listenFailed(tr(
-        "Cannot watch notifications: BecomeMonitor and eavesdrop match both failed. "
-        "Check session-bus policy and that a notification daemon is running."));
+        "Cannot watch notifications: BecomeMonitor and eavesdrop match both failed."));
     return;
   }
 
@@ -254,22 +260,22 @@ void NotificationForwarder::startListening() {
   }
 
   int fd = -1;
-  if (!dbus_connection_get_unix_fd(dbus_->conn, &fd) || fd < 0) {
-    stopListening();
-    emit listenFailed(tr("D-Bus connection has no usable file descriptor"));
-    return;
+  if (dbus_connection_get_unix_fd(dbus_->conn, &fd) && fd >= 0) {
+    notifier_ = new QSocketNotifier(fd, QSocketNotifier::Read, this);
+    connect(notifier_, &QSocketNotifier::activated, this, [this](QSocketDescriptor) { dispatch(); });
   }
 
-  notifier_ = new QSocketNotifier(fd, QSocketNotifier::Read, this);
-  connect(notifier_, &QSocketNotifier::activated, this, [this](QSocketDescriptor) { dispatch(); });
-
+  // Polling backup: avoids relying solely on the socket notifier and
+  // bounds how long we sit in libdbus per tick.
+  pollTimer_->start();
   dispatch();
   listening_ = true;
-  emit debugLog(QStringLiteral("desktop-notify: ready (mode=%1) — send a test with notify-send")
+  emit debugLog(QStringLiteral("desktop-notify: ready (mode=%1) — try: notify-send 'S226' 'test'")
                     .arg(listenMode_));
 }
 
 void NotificationForwarder::stopListening() {
+  if (pollTimer_) pollTimer_->stop();
   if (notifier_) {
     notifier_->setEnabled(false);
     delete notifier_;
@@ -295,6 +301,9 @@ void NotificationForwarder::stopListening() {
 
 void NotificationForwarder::dispatch() {
   if (!dbus_ || !dbus_->conn) return;
-  while (dbus_connection_read_write_dispatch(dbus_->conn, 0))
-    ;
+  // Bound work per tick so a busy bus cannot monopolise the GUI thread.
+  constexpr int kMax = 32;
+  for (int i = 0; i < kMax; ++i) {
+    if (!dbus_connection_read_write_dispatch(dbus_->conn, 0)) break;
+  }
 }
