@@ -45,6 +45,7 @@ private:
   QPushButton* musicPushBtn_ = nullptr;
   QPushButton* musicPullBtn_ = nullptr;
   QCheckBox* mprisForward_ = nullptr;
+  QCheckBox* mprisAutoPush_ = nullptr;
   QLabel* musicLastAction_ = nullptr;
   QLabel* status_ = nullptr;
 };

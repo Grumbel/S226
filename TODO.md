@@ -3,27 +3,24 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-33.1-mpris-94f9363.bundle`
-- Tip: `fd2c55a` optional MPRIS media-key bridge
+- Latest bundle: (pending) MPRIS auto-push
+- Tip: MPRIS auto-push track changes to the watch
 
 ## Done in this sequence
 
-### GUI feature parity with CLI
+### GUI
 - Tabs: Live, Settings, Alarms, Notify, History, Sleep, Workouts
-- Settings: weather status on/off among other settings
-- System tray, music now-playing, media keys
-- Optional MPRIS: forward watch keys to system player; pull track into Notify form
+- Settings: weather status on/off
+- System tray, music now-playing
+- MPRIS: forward keys, pull track, auto-push track changes to watch
 
 ### Library / CLI
 - Sleep, weather status, contacts push
 - CLI `--sleep`, `--weather`, `--contacts`, `--contact-delete`
 
-### Docs
-- PROTOCOL, man, README, AGENTS for the above
-
 ## User-side
 
-- Hardware smoke-test: sleep, weather, contacts write, MPRIS with a playing app
+- Hardware smoke-test: sleep, weather, contacts, MPRIS key forward + auto-push
 
 ## Protocol gaps (research)
 
@@ -36,4 +33,3 @@
 
 - Weather forecast content push (needs condition-code table or capture)
 - Contacts GUI if write is confirmed on hardware
-- Auto-push MPRIS metadata to the watch on track change

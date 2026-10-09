@@ -1,6 +1,7 @@
 #include "mpris_controller.hpp"
 
 #include <QSettings>
+#include <QTimer>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
@@ -26,9 +27,9 @@ QDBusInterface propsIface(const QString& service) {
 QVariant getPlayerProperty(const QString& service, const QString& name) {
   QDBusInterface props = propsIface(service);
   if (!props.isValid()) return {};
-  QDBusReply<QVariant> reply = props.call(QStringLiteral("Get"), QString::fromLatin1(kPlayerIface), name);
+  QDBusReply<QVariant> reply =
+      props.call(QStringLiteral("Get"), QString::fromLatin1(kPlayerIface), name);
   if (!reply.isValid()) return {};
-  // Get returns a QDBusVariant-wrapped value.
   const QVariant v = reply.value();
   if (v.canConvert<QDBusVariant>())
     return qvariant_cast<QDBusVariant>(v).variant();
@@ -40,6 +41,12 @@ QVariant getPlayerProperty(const QString& service, const QString& name) {
 MprisController::MprisController(QObject* parent) : QObject(parent) {
   QSettings s;
   forwardKeys_ = s.value(QStringLiteral("mpris/forwardKeys"), false).toBool();
+  autoPush_ = s.value(QStringLiteral("mpris/autoPush"), false).toBool();
+
+  pollTimer_ = new QTimer(this);
+  pollTimer_->setInterval(2000);
+  connect(pollTimer_, &QTimer::timeout, this, &MprisController::pollTrack);
+  if (autoPush_) pollTimer_->start();
 }
 
 void MprisController::setForwardKeys(bool on) {
@@ -48,6 +55,22 @@ void MprisController::setForwardKeys(bool on) {
   QSettings s;
   s.setValue(QStringLiteral("mpris/forwardKeys"), on);
   emit forwardKeysChanged(on);
+}
+
+void MprisController::setAutoPush(bool on) {
+  if (autoPush_ == on) return;
+  autoPush_ = on;
+  QSettings s;
+  s.setValue(QStringLiteral("mpris/autoPush"), on);
+  if (on) {
+    lastFingerprint_.clear();
+    pollTimer_->start();
+    pollTrack();
+  } else {
+    pollTimer_->stop();
+    lastFingerprint_.clear();
+  }
+  emit autoPushChanged(on);
 }
 
 QStringList MprisController::listPlayerServices() const {
@@ -60,7 +83,6 @@ QStringList MprisController::listPlayerServices() const {
     if (n.startsWith(QLatin1String(kMprisPrefix)) && !n.endsWith(QLatin1String(".Instance")))
       out.push_back(n);
   }
-  // Also keep Instance-suffixed names if they are the only ones (some players).
   if (out.isEmpty()) {
     for (const QString& n : names.value()) {
       if (n.startsWith(QLatin1String(kMprisPrefix))) out.push_back(n);
@@ -111,17 +133,13 @@ std::optional<s226::protocol::NowPlaying> MprisController::currentTrack() const 
 
   const QVariant vol = getPlayerProperty(svc, QStringLiteral("Volume"));
   if (vol.isValid()) {
-    // MPRIS Volume is 0.0..1.0
-    np.volume = qBound(qBound(vol.toDouble() * 100.0));
+    np.volume = qBound(vol.toDouble() * 100.0);
     if (np.volume < 0) np.volume = 0;
     if (np.volume > 100) np.volume = 100;
   }
 
   const QVariant metaVar = getPlayerProperty(svc, QStringLiteral("Metadata"));
   const QVariantMap meta = metaVar.toMap();
-  if (meta.isEmpty() && !metaVar.canConvert<QVariantMap>()) {
-    // Some Qt versions expose a QDBusArgument map; try QMap conversion via value.
-  }
   auto strField = [&](const char* key) -> std::string {
     const QVariant v = meta.value(QLatin1String(key));
     if (v.metaType().id() == QMetaType::QStringList) {
@@ -136,4 +154,19 @@ std::optional<s226::protocol::NowPlaying> MprisController::currentTrack() const 
 
   if (np.title.empty() && np.artist.empty() && np.album.empty()) return std::nullopt;
   return np;
+}
+
+std::string MprisController::fingerprint(const s226::protocol::NowPlaying& np) {
+  return np.title + "\n" + np.artist + "\n" + np.album + "\n" + (np.playing ? "1" : "0") + "\n" +
+         std::to_string(np.volume);
+}
+
+void MprisController::pollTrack() {
+  if (!autoPush_) return;
+  auto np = currentTrack();
+  if (!np) return;
+  const std::string fp = fingerprint(*np);
+  if (fp == lastFingerprint_) return;
+  lastFingerprint_ = fp;
+  emit trackChanged(*np);
 }

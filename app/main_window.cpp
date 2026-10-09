@@ -82,6 +82,11 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
   connect(&bridge_, &WatchBridge::heartRate, this, &MainWindow::onHeartRate);
   connect(&bridge_, &WatchBridge::musicControl, mpris_,
           &MprisController::handleWatchAction);
+  connect(mpris_, &MprisController::trackChanged, this, [this](const s226::protocol::NowPlaying& np) {
+    if (!bridge_.isConnected()) return;
+    const auto packets = s226::protocol::nowPlayingPackets(np);
+    for (const auto& pkt : packets) bridge_.send(pkt);
+  });
   connect(&bridge_, &WatchBridge::logMessage, this, &MainWindow::appendLog);
   connect(&bridge_, &WatchBridge::bloodPressureProgress, this, [this](int pct) {
     view_->setSecondary(tr("Blood pressure %1%").arg(pct));

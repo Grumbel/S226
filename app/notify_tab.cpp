@@ -106,6 +106,17 @@ void NotifyTab::buildUi() {
     mprisForward_->setEnabled(false);
   }
   form->addRow(mprisForward_);
+  mprisAutoPush_ = new QCheckBox(tr("Push system track changes to the watch"), musicBox);
+  mprisAutoPush_->setToolTip(
+      tr("When enabled and connected, now-playing metadata from the active "
+         "MPRIS player is sent to the watch whenever the track or play state changes."));
+  if (mpris_) {
+    mprisAutoPush_->setChecked(mpris_->autoPush());
+    connect(mprisAutoPush_, &QCheckBox::toggled, mpris_, &MprisController::setAutoPush);
+  } else {
+    mprisAutoPush_->setEnabled(false);
+  }
+  form->addRow(mprisAutoPush_);
   form->addRow(musicRow);
   lay->addWidget(musicBox);
 
