@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-42.1-fix-qround-94f9363.bundle`
-- Tip: `16fc138` fix MPRIS qRound for Qt 6.11
+- Latest bundle: artifacts `s226-44.1-fix-notify-mpris-94f9363.bundle`
+- Tip: `dbbc46f` fix NotifyTab MprisController include/ctor
 
 ## Done in this sequence
 
