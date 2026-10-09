@@ -255,15 +255,130 @@ Sport-model variant uses different endianness + extra fields:
 
 ### 5.3 Sleep (`0xE0`) – multi-packet
 
+**Header:** `0xE0` (`HEAD_SLEEP` = -32)
+
+#### Read commands (phone → watch)
+
+| Command | Bytes | Meaning |
+|---------|-------|---------|
+| Today | `E0 00` | `SLEEP_READ_TODAY` |
+| Yesterday | `E0 01` | `SLEEP_READ_YESTERDAY` |
+| Day before | `E0 02` | `SLEEP_READ_BEFORYESTDAY` |
+| Day N | `E0 <N>` | N = 0 today … up to `FUCTION_DATA_DAY − 1` (default 3 days) |
+
+App flow (`SleepHandler`):
+1. Write `E0 00`, collect notifies into a list.
+2. When a packet has **`[1] == 0`** (end flag), finalize that day, then request next day `E0 01`, …
+3. Stop after `SLEEP_DATA_DAY` days (or skip days already cached via version tables).
+4. Require **≥ 6** packets for a day before parsing (`saveByteData`).
+
+#### Notify packet layout
+
 ```
-[0]   0xE0
-[1]   packet index / end flag (0 = end of day)
-[2]   ?
-[3]   day index (0=today, 1=yesterday…)
-[4..19] 16 bytes of payload (hex-concatenated into a continuous stream)
+[0]     0xE0
+[1]     packet index; **0 = last packet of this day**
+[2]     (used in item parse)
+[3]     day index (0=today, 1=yesterday, …)
+[4..19] 16-byte payload chunk
 ```
 
-App collects packets until `[1] == 0`, then splits the concatenated payload into fixed-size sleep segments.
+Payloads are concatenated in order (bytes `[4..19]` only) into one day blob.
+
+#### Protocol type split
+
+| `INT_PROTICL_TYPE` | Path |
+|-------------------|------|
+| **≠ 3** (classic) | `handSleepData` per packet → `SleepItemBean` → `getSleepBean` |
+| **== 3** (V1) | Raw concat → `SleepV1Handler.handelr` (TLV blocks) |
+
+---
+
+#### Classic sleep record (`getSleepBean`)
+
+After concatenating hex from all packets and splitting into per-nap segments (`spilt2word`), each record is a sequence of **byte values** (as hex pairs):
+
+| Index | Field |
+|-------|--------|
+| 1–4 | Sleep-down time → `TimeBean(y, m, d, h)` style ints |
+| 5–8 | Sleep-up (wake) time |
+| 9 | Deep sleep units → **minutes = value × 5** |
+| 10 | Light sleep units → **minutes = value × 5** |
+| 11 | Sleep quality |
+| 12–42 | Stage curve source (**31 bytes** as hex digits) |
+| 43 | Curve bit length (`≤ 248`) |
+| 44–54 | Wake-start markers area |
+| 55 | Wake count (`≤ 6` warned if higher) |
+| 56–66 | Wake-end markers area |
+| 45+k | Wake interval start for k-th wake |
+| 57+k | Wake interval end for k-th wake |
+
+**Stage curve (classic):**
+1. Concatenate hex of bytes `[12..42]` (62 hex digits).
+2. `hexString2binaryString`: each **hex digit → 4 bits** → 248-bit string max.
+3. Keep first `[43]` bits as the night curve.
+4. For each wake interval, `repalce` sets those bits to **`'2'`** (awake).
+5. Remaining **`'0'` / `'1'`** bits are the sleep stages (deep vs light); exact 0/1 polarity is not labeled in code beyond stored totals for deep/light minutes.
+
+`SleepBean` stores: quality, wakeCount, deepSleepTime, lowSleepTime, allSleepTime (= bitLength × 5), sleepLine, sleepDown, sleepUp.
+
+---
+
+#### Sleep V1 (`protoclType == 3`) — TLV inside day blob
+
+Outer items tagged **`0xA1`** (length-prefixed LE). Inside each item:
+
+| Tag | Block | Content |
+|-----|--------|---------|
+| `0xA2` | CRC | CRCs for base / insomnia / curve / all |
+| `0xA3` | Base sleep | Times + scores + durations (see below) |
+| `0xA4` | Insomnia v1 | Tag, score, times, length, up to 10 intervals |
+| `0xA5` | Sleep curve | Stage samples |
+| `0xA6` | Lengths | `lastLength`, `nextLength` |
+| `0xA7` | Insomnia v2 | Alternate insomnia block |
+
+**Base block (`0xA3`, ≥ 35 bytes):**
+
+| Offset | Field |
+|--------|--------|
+| 0–3 | Sleep time `TimeBean` |
+| 4–7 | Wake time `TimeBean` |
+| 8 | sleepTag |
+| 9 | getUpScore |
+| 10 | deepScore |
+| 11 | sleepEfficiencyScore |
+| 12 | fallAsleepScore |
+| 13 | sleepTimeScore |
+| 14 | exitSleepMode |
+| 15 | sleepQuality |
+| 16 | getUpTimes |
+| 17–18 | deepAndLightMode (LE u16) |
+| 19–20 | deepDuration |
+| 21–22 | lightDuration |
+| 23–24 | otherDuration |
+| 25–26 | sleepDuration |
+| 27–28 | firstDeepDuration |
+| 29–30 | getUpDuration |
+| 31–32 | getUpToDeepAve |
+| 33–34 | onePointDuration (minutes per curve point) |
+| 35 | accurateType |
+
+**Curve block (`0xA5`):** for each 2-byte sample:
+
+```text
+stage = (sample & 0xE000) >> 13   # top 3 bits
+if stage > 4: stage = 4
+```
+
+Append decimal digit `0`–`4` to `sleepLine`. Stage **3** is counted toward insomnia duration  
+`(count_of_3 * onePointDuration) / 60` minutes.
+
+---
+
+#### Source
+
+`SleepHandler`, `SleepV1Handler`, `SleepBean` / `SleepInfoBean`, `BleProfile.SLEEP_READ_*`.
+
+---
 
 ### 5.4 5-minute / Original data (`0xD1` / `0xDF`) – multi-packet + TLV
 
