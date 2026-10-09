@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: (pending) desktop notification forward
-- Tip: forward org.freedesktop.Notifications to the watch
+- Latest bundle: artifacts `s226-46.1-desktop-notify-94f9363.bundle`
+- Tip: `a3bd0f8` desktop notification → watch
 
 ## Done in this sequence
 
