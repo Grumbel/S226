@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: (pending) MPRIS auto-push
-- Tip: MPRIS auto-push track changes to the watch
+- Latest bundle: artifacts `s226-36.1-mpris-autopush-94f9363.bundle`
+- Tip: `d68af8a` MPRIS auto-push track changes
 
 ## Done in this sequence
 
