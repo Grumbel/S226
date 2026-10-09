@@ -12,11 +12,12 @@
 #include <QVBoxLayout>
 
 #include "watch_bridge.hpp"
+#include "mpris_controller.hpp"
 
 namespace proto = s226::protocol;
 
-NotifyTab::NotifyTab(WatchBridge& bridge, QWidget* parent)
-    : QWidget(parent), bridge_(bridge) {
+NotifyTab::NotifyTab(WatchBridge& bridge, MprisController* mpris, QWidget* parent)
+    : QWidget(parent), bridge_(bridge), mpris_(mpris) {
   buildUi();
   setConnected(false);
   connect(&bridge_, &WatchBridge::musicControl, this, &NotifyTab::onMusicControl);
