@@ -3,13 +3,17 @@
 #include <QObject>
 #include <QString>
 
-class QSocketNotifier;
-class QTimer;
+class QThread;
 
-// Listens on the session bus for org.freedesktop.Notifications.Notify
-// method calls. Prefers BecomeMonitor; falls back to an eavesdrop match.
-// D-Bus I/O is polled on a timer; Notify events are queued to the Qt
-// event loop so the GUI thread never blocks inside libdbus.
+// Forwards org.freedesktop.Notifications.Notify traffic to the watch.
+//
+// Correct approach (dbus-monitor / KDE Connect):
+//   - private session-bus connection
+//   - dbus_connection_set_route_peer_messages(true)
+//   - install message filter, then BecomeMonitor (eavesdrop is deprecated)
+//   - match: method_call + interface + member + path
+//   - never emit Qt/BLE work from inside the libdbus filter
+//   - I/O runs on a dedicated QThread so the GUI cannot freeze
 class NotificationForwarder : public QObject {
   Q_OBJECT
 
@@ -22,8 +26,12 @@ public:
   bool isListening() const { return listening_; }
   QString listenMode() const { return listenMode_; }
 
-  // Called queued from the D-Bus filter (must stay on the GUI thread).
-  void emitQueued(const QString& app, const QString& summary, const QString& body);
+public slots:
+  // Queued from the monitor thread onto the GUI thread.
+  void onNotify(const QString& app, const QString& summary, const QString& body);
+  void onDebug(const QString& line);
+  void onListenFailed(const QString& reason);
+  void onListening(const QString& mode);
 
 signals:
   void enabledChanged(bool on);
@@ -31,16 +39,14 @@ signals:
   void listenFailed(const QString& reason);
   void debugLog(const QString& line);
 
+  // Internal: ask the worker to start/stop (cross-thread).
+  void startWorker();
+  void stopWorker();
+
 private:
-  void startListening();
-  void stopListening();
-  void dispatch();
-  bool tryBecomeMonitor();
-  bool tryEavesdropMatch();
-  struct DBusState;
-  DBusState* dbus_ = nullptr;
-  QSocketNotifier* notifier_ = nullptr;
-  QTimer* pollTimer_ = nullptr;
+  class Worker;
+  Worker* worker_ = nullptr;
+  QThread* thread_ = nullptr;
   bool enabled_ = false;
   bool listening_ = false;
   QString listenMode_;
