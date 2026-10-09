@@ -11,17 +11,15 @@
 
 // Match rule used by dbus-monitor / KDE Connect for Notify method calls.
 // BecomeMonitor treats rules as eavesdrop=true automatically.
+// KDE Connect uses this form; BecomeMonitor treats rules as eavesdrop=true.
 static const char* kNotifyMatch =
-    "type='method_call',"
-    "interface='org.freedesktop.Notifications',"
-    "member='Notify',"
-    "path='/org/freedesktop/Notifications'";
+    "interface='org.freedesktop.Notifications',member='Notify'";
 
+// Deprecated fallback when BecomeMonitor is unavailable.
 static const char* kNotifyMatchEavesdrop =
     "type='method_call',"
     "interface='org.freedesktop.Notifications',"
     "member='Notify',"
-    "path='/org/freedesktop/Notifications',"
     "eavesdrop='true'";
 
 namespace {
@@ -160,24 +158,22 @@ private slots:
 private:
   static DBusHandlerResult filter(DBusConnection*, DBusMessage* msg, void* data) {
     auto* self = static_cast<Worker*>(data);
-    if (!self || !self->conn_) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-
-    if (!dbus_message_is_method_call(msg, "org.freedesktop.Notifications", "Notify"))
-      return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-
-    QString app, summary, body;
-    if (!parseNotify(msg, &app, &summary, &body)) {
-      QMetaObject::invokeMethod(self->owner_, "onDebug", Qt::QueuedConnection,
-                                Q_ARG(QString, QStringLiteral("desktop-notify: Notify parse failed")));
-      // Monitor connections must not leave messages unhandled in a way that
-      // confuses the connection; mark as handled so libdbus does not try to
-      // send a default reply (monitors must not send).
-      return DBUS_HANDLER_RESULT_HANDLED;
+    // dbus-monitor / KDE Connect: monitors must ALWAYS return HANDLED so
+    // libdbus never tries to send a reply (monitors are not allowed to send;
+    // doing so gets the connection disconnected). See dbus bug 1719.
+    if (self && self->conn_ &&
+        dbus_message_is_method_call(msg, "org.freedesktop.Notifications", "Notify")) {
+      QString app, summary, body;
+      if (parseNotify(msg, &app, &summary, &body)) {
+        QMetaObject::invokeMethod(self->owner_, "onNotify", Qt::QueuedConnection,
+                                  Q_ARG(QString, app), Q_ARG(QString, summary),
+                                  Q_ARG(QString, body));
+      } else {
+        QMetaObject::invokeMethod(
+            self->owner_, "onDebug", Qt::QueuedConnection,
+            Q_ARG(QString, QStringLiteral("desktop-notify: Notify parse failed")));
+      }
     }
-
-    QMetaObject::invokeMethod(self->owner_, "onNotify", Qt::QueuedConnection, Q_ARG(QString, app),
-                              Q_ARG(QString, summary), Q_ARG(QString, body));
-    // HANDLED: we are a monitor — never attempt to reply to the method call.
     return DBUS_HANDLER_RESULT_HANDLED;
   }
 
