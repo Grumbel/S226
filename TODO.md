@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-57.1-desktop-notify-debug-94f9363.bundle`
-- Tip: `689ada3` desktop notify BecomeMonitor + debug log
+- Latest bundle: artifacts `s226-59.1-fix-notify-freeze-94f9363.bundle`
+- Tip: `39f35c7` fix desktop-notify GUI freeze
 
 ## Done in this sequence
 
