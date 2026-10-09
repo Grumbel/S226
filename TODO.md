@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-71.1-hr-start-stop-94f9363.bundle`
-- Tip: `43d6480` Live tab Start/Stop heart rate
+- Latest bundle: artifacts `s226-73.1-main-menu-94f9363.bundle`
+- Tip: `a9518e3` main menu bar
 
 ## Done in this sequence
 
