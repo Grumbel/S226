@@ -72,6 +72,9 @@ watch drops out. Connects to any S226 by default; pick or type an
 address in the **Watch** field (or pass `--address`). Watches you have
 connected to before are listed there.
 
+Only one instance runs by default; a second start raises the existing
+window. Use `--multi-instance` for two watches/controllers at once.
+
 Closing the window hides to the **system tray** when one is available
 (tooltip shows connection state and latest bpm). Restore from the tray
 icon; **Quit** in the tray menu or **Ctrl+Q** exits fully.

@@ -41,6 +41,8 @@ public:
 
   void connectWatch();
   void disconnectWatch();
+  // Show, raise and focus (also restores from the system tray).
+  void bringToFront();
   MprisController* mpris() const { return mpris_; }
   NotificationForwarder* desktopNotify() const { return desktopNotify_; }
 

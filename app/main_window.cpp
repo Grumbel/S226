@@ -594,6 +594,8 @@ void MainWindow::updateTray() {
   tray_->setToolTip(tip);
 }
 
+void MainWindow::bringToFront() { showFromTray(); }
+
 void MainWindow::showFromTray() {
   showNormal();
   raise();
