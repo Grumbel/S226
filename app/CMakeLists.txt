@@ -23,7 +23,11 @@ qt_add_executable(s226-hr
 qt_add_resources(s226-hr icons
   PREFIX /
   BASE ../data/icons
-  FILES ../data/icons/s226-hr.svg
+  FILES
+    ../data/icons/s226-hr.svg
+    ../data/icons/menu-heart-rate.svg
+    ../data/icons/menu-blood-pressure.svg
+    ../data/icons/menu-metronome.svg
 )
 target_link_libraries(s226-hr PRIVATE s226ble Qt6::Widgets Qt6::Multimedia Qt6::DBus PkgConfig::DBUS)
 target_compile_definitions(s226-hr PRIVATE S226_VERSION="${S226_VERSION}")

@@ -25,6 +25,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QShortcut>
+#include <QStyle>
 #include <QSizePolicy>
 #include <QSlider>
 #include <QStatusBar>
@@ -68,6 +69,20 @@ QString stateText(s226::WatchState state, const QString& detail) {
   case S::Error: return MainWindow::tr("Error: %1").arg(detail);
   }
   return {};
+}
+
+} // namespace
+
+
+namespace {
+
+QIcon menuIcon(const QString& themeName, QStyle::StandardPixmap standard,
+               const QString& resource = {}) {
+  QIcon icon = QIcon::fromTheme(themeName);
+  if (icon.isNull() && qApp && qApp->style())
+    icon = qApp->style()->standardIcon(standard);
+  if (icon.isNull() && !resource.isEmpty()) icon = QIcon(resource);
+  return icon;
 }
 
 } // namespace
@@ -432,7 +447,10 @@ void MainWindow::connectWatch() {
   QSettings().setValue("watch", watch);
   QSettings().setValue("controller", selectedController());
   connectButton_->setText(tr("Disconnect"));
-  if (connectAction_) connectAction_->setText(tr("&Disconnect"));
+  if (connectAction_) {
+    connectAction_->setText(tr("&Disconnect"));
+    connectAction_->setIcon(menuIcon(QStringLiteral("network-disconnect"), QStyle::SP_BrowserStop));
+  }
   controllerBox_->setEnabled(false);
   watchBox_->setEnabled(false);
   bridge_.start(selectedController(), watch);
@@ -443,7 +461,10 @@ void MainWindow::disconnectWatch() {
   active_ = false;
   bridge_.stop();
   connectButton_->setText(tr("Connect"));
-  if (connectAction_) connectAction_->setText(tr("&Connect"));
+  if (connectAction_) {
+    connectAction_->setText(tr("&Connect"));
+    connectAction_->setIcon(menuIcon(QStringLiteral("network-connect"), QStyle::SP_BrowserReload));
+  }
   controllerBox_->setEnabled(true);
   watchBox_->setEnabled(true);
   setTabsEnabled(false);
@@ -609,6 +630,7 @@ void MainWindow::changeEvent(QEvent* event) {
 void MainWindow::buildMenus() {
   // Shared actions (toolbar buttons keep their own widgets; menus call the same slots).
   connectAction_ = new QAction(tr("&Connect"), this);
+  connectAction_->setIcon(menuIcon(QStringLiteral("network-connect"), QStyle::SP_BrowserReload));
   connectAction_->setShortcut(QKeySequence(tr("Ctrl+Shift+C")));
   connect(connectAction_, &QAction::triggered, this, [this] {
     if (active_) disconnectWatch();
@@ -616,11 +638,14 @@ void MainWindow::buildMenus() {
   });
 
   quitAction_ = new QAction(tr("&Quit"), this);
+  quitAction_->setIcon(menuIcon(QStringLiteral("application-exit"), QStyle::SP_DialogCloseButton));
   quitAction_->setShortcut(QKeySequence::Quit);
   connect(quitAction_, &QAction::triggered, this, &MainWindow::quitApp);
   addAction(quitAction_);
 
   metronomeAction_ = new QAction(tr("&Metronome"), this);
+  metronomeAction_->setIcon(menuIcon(QStringLiteral("media-playlist-repeat"), QStyle::SP_MediaPlay,
+                                     QStringLiteral(":/menu-metronome.svg")));
   metronomeAction_->setShortcut(QKeySequence(Qt::Key_M));
   metronomeAction_->setCheckable(true);
   metronomeAction_->setChecked(metronomeBox_->isChecked());
@@ -628,12 +653,18 @@ void MainWindow::buildMenus() {
   connect(metronomeBox_, &QCheckBox::toggled, metronomeAction_, &QAction::setChecked);
 
   hrAction_ = new QAction(tr("Start &heart rate"), this);
+  hrAction_->setIcon(QIcon(QStringLiteral(":/menu-heart-rate.svg")));
   hrAction_->setEnabled(false);
   connect(hrAction_, &QAction::triggered, this, &MainWindow::toggleHeartRate);
 
   bpAction_ = new QAction(tr("&Blood pressure"), this);
+  bpAction_->setIcon(QIcon(QStringLiteral(":/menu-blood-pressure.svg")));
   bpAction_->setEnabled(false);
   connect(bpAction_, &QAction::triggered, bpButton_, &QPushButton::click);
+
+  logAction_->setIcon(menuIcon(QStringLiteral("utilities-log-viewer"), QStyle::SP_FileDialogDetailedView));
+
+  fullScreenAction_->setIcon(menuIcon(QStringLiteral("view-fullscreen"), QStyle::SP_TitleBarMaxButton));
 
   auto* fileMenu = menuBar()->addMenu(tr("&File"));
   fileMenu->addAction(connectAction_);
@@ -651,7 +682,10 @@ void MainWindow::buildMenus() {
   watchMenu->addAction(bpAction_);
 
   auto* helpMenu = menuBar()->addMenu(tr("&Help"));
-  auto* about = helpMenu->addAction(tr("&About S226 Heart Rate"));
+  auto* about = helpMenu->addAction(
+      menuIcon(QStringLiteral("help-about"), QStyle::SP_MessageBoxInformation,
+               QStringLiteral(":/s226-hr.svg")),
+      tr("&About S226 Heart Rate"));
   connect(about, &QAction::triggered, this, &MainWindow::showAbout);
 }
 
@@ -674,15 +708,18 @@ void MainWindow::buildTray() {
   }
 
   trayMenu_ = new QMenu(this);
-  trayShowAction_ = trayMenu_->addAction(tr("Show window"));
+  trayShowAction_ = trayMenu_->addAction(
+      menuIcon(QStringLiteral("window-new"), QStyle::SP_TitleBarNormalButton), tr("Show window"));
   connect(trayShowAction_, &QAction::triggered, this, &MainWindow::showFromTray);
-  trayConnectAction_ = trayMenu_->addAction(tr("Connect"));
+  trayConnectAction_ = trayMenu_->addAction(
+      menuIcon(QStringLiteral("network-connect"), QStyle::SP_BrowserReload), tr("Connect"));
   connect(trayConnectAction_, &QAction::triggered, this, [this] {
     if (active_) disconnectWatch();
     else connectWatch();
   });
   trayMenu_->addSeparator();
-  trayQuitAction_ = trayMenu_->addAction(tr("Quit"));
+  trayQuitAction_ = trayMenu_->addAction(
+      menuIcon(QStringLiteral("application-exit"), QStyle::SP_DialogCloseButton), tr("Quit"));
   connect(trayQuitAction_, &QAction::triggered, this, &MainWindow::quitApp);
 
   tray_ = new QSystemTrayIcon(this);
@@ -702,6 +739,9 @@ void MainWindow::updateTray() {
   if (!tray_) return;
   if (trayConnectAction_) {
     trayConnectAction_->setText(active_ ? tr("Disconnect") : tr("Connect"));
+    trayConnectAction_->setIcon(active_
+                                    ? menuIcon(QStringLiteral("network-disconnect"), QStyle::SP_BrowserStop)
+                                    : menuIcon(QStringLiteral("network-connect"), QStyle::SP_BrowserReload));
   }
   QString tip = tr("S226 Heart Rate");
   if (state_ == s226::WatchState::Connected) {
