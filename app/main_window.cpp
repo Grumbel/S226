@@ -6,6 +6,8 @@
 #include <QApplication>
 #include <QEvent>
 #include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
 #include <QSystemTrayIcon>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -333,15 +335,16 @@ void MainWindow::buildUi() {
   logDock_->setWidget(logView_);
   addDockWidget(Qt::BottomDockWidgetArea, logDock_);
   logDock_->hide();
-  QAction* logAction = logDock_->toggleViewAction();
-  logAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
-  bar->addAction(logAction);
+  logAction_ = logDock_->toggleViewAction();
+  logAction_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+  bar->addAction(logAction_);
 
-  auto* fullScreen = new QAction(tr("Full screen"), this);
-  fullScreen->setShortcut(QKeySequence::FullScreen);
-  connect(fullScreen, &QAction::triggered, this, &MainWindow::toggleFullScreen);
-  bar->addAction(fullScreen);
-  addAction(fullScreen);
+  fullScreenAction_ = new QAction(tr("Full screen"), this);
+  fullScreenAction_->setShortcut(QKeySequence::FullScreen);
+  fullScreenAction_->setCheckable(true);
+  connect(fullScreenAction_, &QAction::triggered, this, &MainWindow::toggleFullScreen);
+  bar->addAction(fullScreenAction_);
+  addAction(fullScreenAction_);
 
   auto* f11 = new QShortcut(QKeySequence(Qt::Key_F11), this);
   connect(f11, &QShortcut::activated, this, &MainWindow::toggleFullScreen);
@@ -349,10 +352,8 @@ void MainWindow::buildUi() {
   connect(esc, &QShortcut::activated, this, [this] {
     if (isFullScreen()) toggleFullScreen();
   });
-  auto* m = new QShortcut(QKeySequence(Qt::Key_M), this);
-  connect(m, &QShortcut::activated, metronomeBox_, &QCheckBox::toggle);
-  auto* quit = new QShortcut(QKeySequence::Quit, this);
-  connect(quit, &QShortcut::activated, this, &MainWindow::quitApp);
+
+  buildMenus();
 
   stateLabel_ = new QLabel(this);
   statusBar()->addWidget(stateLabel_, 1);
@@ -431,6 +432,7 @@ void MainWindow::connectWatch() {
   QSettings().setValue("watch", watch);
   QSettings().setValue("controller", selectedController());
   connectButton_->setText(tr("Disconnect"));
+  if (connectAction_) connectAction_->setText(tr("&Disconnect"));
   controllerBox_->setEnabled(false);
   watchBox_->setEnabled(false);
   bridge_.start(selectedController(), watch);
@@ -441,6 +443,7 @@ void MainWindow::disconnectWatch() {
   active_ = false;
   bridge_.stop();
   connectButton_->setText(tr("Connect"));
+  if (connectAction_) connectAction_->setText(tr("&Connect"));
   controllerBox_->setEnabled(true);
   watchBox_->setEnabled(true);
   setTabsEnabled(false);
@@ -454,6 +457,8 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   setTabsEnabled(connected);
   bpButton_->setEnabled(connected);
   hrButton_->setEnabled(connected);
+  if (hrAction_) hrAction_->setEnabled(connected);
+  if (bpAction_) bpAction_->setEnabled(connected);
   if (!connected) lastBpm_ = 0;
   updateTray();
   if (connected && !detail.isEmpty()) rememberWatch(detail);
@@ -504,8 +509,10 @@ void MainWindow::toggleHeartRate() {
 }
 
 void MainWindow::updateHrButton() {
-  if (!hrButton_) return;
-  hrButton_->setText(hrRunning_ ? tr("Stop heart rate") : tr("Start heart rate"));
+  if (hrButton_)
+    hrButton_->setText(hrRunning_ ? tr("Stop heart rate") : tr("Start heart rate"));
+  if (hrAction_)
+    hrAction_->setText(hrRunning_ ? tr("Stop &heart rate") : tr("Start &heart rate"));
 }
 
 void MainWindow::onHeartRate(int bpm) {
@@ -562,6 +569,7 @@ void MainWindow::appendLog(const QString& line) {
 void MainWindow::toggleFullScreen() {
   if (isFullScreen()) showNormal();
   else showFullScreen();
+  if (fullScreenAction_) fullScreenAction_->setChecked(isFullScreen());
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
@@ -595,7 +603,68 @@ void MainWindow::changeEvent(QEvent* event) {
   }
 }
 
+void MainWindow::buildMenus() {
+  // Shared actions (toolbar buttons keep their own widgets; menus call the same slots).
+  connectAction_ = new QAction(tr("&Connect"), this);
+  connectAction_->setShortcut(QKeySequence(tr("Ctrl+Shift+C")));
+  connect(connectAction_, &QAction::triggered, this, [this] {
+    if (active_) disconnectWatch();
+    else connectWatch();
+  });
+
+  quitAction_ = new QAction(tr("&Quit"), this);
+  quitAction_->setShortcut(QKeySequence::Quit);
+  connect(quitAction_, &QAction::triggered, this, &MainWindow::quitApp);
+  addAction(quitAction_);
+
+  metronomeAction_ = new QAction(tr("&Metronome"), this);
+  metronomeAction_->setShortcut(QKeySequence(Qt::Key_M));
+  metronomeAction_->setCheckable(true);
+  metronomeAction_->setChecked(metronomeBox_->isChecked());
+  connect(metronomeAction_, &QAction::toggled, metronomeBox_, &QCheckBox::setChecked);
+  connect(metronomeBox_, &QCheckBox::toggled, metronomeAction_, &QAction::setChecked);
+
+  hrAction_ = new QAction(tr("Start &heart rate"), this);
+  hrAction_->setEnabled(false);
+  connect(hrAction_, &QAction::triggered, this, &MainWindow::toggleHeartRate);
+
+  bpAction_ = new QAction(tr("&Blood pressure"), this);
+  bpAction_->setEnabled(false);
+  connect(bpAction_, &QAction::triggered, bpButton_, &QPushButton::click);
+
+  auto* fileMenu = menuBar()->addMenu(tr("&File"));
+  fileMenu->addAction(connectAction_);
+  fileMenu->addSeparator();
+  fileMenu->addAction(quitAction_);
+
+  auto* viewMenu = menuBar()->addMenu(tr("&View"));
+  viewMenu->addAction(logAction_);
+  viewMenu->addAction(fullScreenAction_);
+  viewMenu->addSeparator();
+  viewMenu->addAction(metronomeAction_);
+
+  auto* watchMenu = menuBar()->addMenu(tr("&Watch"));
+  watchMenu->addAction(hrAction_);
+  watchMenu->addAction(bpAction_);
+
+  auto* helpMenu = menuBar()->addMenu(tr("&Help"));
+  auto* about = helpMenu->addAction(tr("&About S226 Heart Rate"));
+  connect(about, &QAction::triggered, this, &MainWindow::showAbout);
+}
+
+void MainWindow::showAbout() {
+  QMessageBox::about(
+      this, tr("About S226 Heart Rate"),
+      tr("<p><b>S226 Heart Rate</b> %1</p>"
+         "<p>Live heart rate, settings, sleep, workouts and notifications "
+         "for the S226 (H-Band / Veepoo) fitness watch over Bluetooth LE.</p>"
+         "<p>Uses a USB Bluetooth controller directly (no BlueZ).</p>"
+         "<p><a href=\"https://github.com/Grumbel/S226\">github.com/Grumbel/S226</a></p>")
+          .arg(QApplication::applicationVersion()));
+}
+
 void MainWindow::buildTray() {
+
   if (!QSystemTrayIcon::isSystemTrayAvailable()) {
     appendLog(tr("No system tray available; the window will quit on close."));
     return;

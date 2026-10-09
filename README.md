@@ -93,6 +93,8 @@ Closing the window hides to the **system tray** when one is available
 (tooltip shows connection state and latest bpm). Restore from the tray
 icon; **Quit** in the tray menu or **Ctrl+Q** exits fully.
 
+Menu bar: **File** (connect, quit), **View** (log, full screen, metronome),
+**Watch** (heart rate, blood pressure), **Help** (about).
 Keys: **F11** / **Esc** full screen, **M** metronome, **Ctrl+L** log
 panel, **Ctrl+Q** quit. Details are in `man s226-hr`.
 

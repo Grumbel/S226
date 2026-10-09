@@ -52,7 +52,9 @@ protected:
 
 private:
   void buildUi();
+  void buildMenus();
   void buildTray();
+  void showAbout();
   void refreshControllers();
   QString selectedController() const;
   QString selectedWatch() const;
@@ -99,6 +101,13 @@ private:
   WorkoutsTab* workoutsTab_ = nullptr;
   SleepTab* sleepTab_ = nullptr;
 
+  QAction* connectAction_ = nullptr;
+  QAction* quitAction_ = nullptr;
+  QAction* logAction_ = nullptr;
+  QAction* fullScreenAction_ = nullptr;
+  QAction* metronomeAction_ = nullptr;
+  QAction* hrAction_ = nullptr;
+  QAction* bpAction_ = nullptr;
   QSystemTrayIcon* tray_ = nullptr;
   QMenu* trayMenu_ = nullptr;
   QAction* trayShowAction_ = nullptr;
