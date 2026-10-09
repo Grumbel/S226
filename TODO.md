@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-55.1-fix-desktop-notify-94f9363.bundle`
-- Tip: `f669f3d` fix desktop notification forwarder bugs
+- Latest bundle: artifacts `s226-57.1-desktop-notify-debug-94f9363.bundle`
+- Tip: `689ada3` desktop notify BecomeMonitor + debug log
 
 ## Done in this sequence
 
