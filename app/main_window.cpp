@@ -133,6 +133,7 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
   connect(desktopNotify_, &NotificationForwarder::listenFailed, this, [this](const QString& reason) {
     appendLog(tr("Desktop notification forward: %1").arg(reason));
   });
+  connect(desktopNotify_, &NotificationForwarder::debugLog, this, &MainWindow::appendLog);
   connect(&bridge_, &WatchBridge::logMessage, this, &MainWindow::appendLog);
   connect(&bridge_, &WatchBridge::bloodPressureProgress, this, [this](int pct) {
     view_->setSecondary(tr("Blood pressure %1%").arg(pct));
