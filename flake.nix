@@ -13,8 +13,13 @@
       ];
 
       forAllSystems = f:
-        nixpkgs.lib.genAttrs systems (system:
-          f (import nixpkgs { inherit system; }));
+        nixpkgs.lib.genAttrs systems (
+          system:
+          f {
+            inherit system;
+            pkgs = import nixpkgs { inherit system; };
+          }
+        );
 
       versionBase =
         nixpkgs.lib.strings.removeSuffix "\n" (builtins.readFile ./VERSION);
@@ -28,7 +33,7 @@
           versionBase;
     in
     {
-      packages = forAllSystems (pkgs:
+      packages = forAllSystems ({ pkgs, ... }:
         let
           # Bumble is not always packaged; build from PyPI.
           bumble = pkgs.python3Packages.buildPythonPackage rec {
@@ -167,29 +172,29 @@
           s226-bumble = mkScript { name = "s226-bumble"; srcFile = "s226_bumble.py"; };
         });
 
-      apps = forAllSystems (pkgs: {
+      apps = forAllSystems ({ pkgs, system }: {
         default = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.s226-hr}/bin/s226-hr";
+          program = "${self.packages.${system}.s226-hr}/bin/s226-hr";
         };
-        s226-hr = self.apps.${pkgs.system}.default;
+        s226-hr = self.apps.${system}.default;
         s226-cli = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.s226-hr}/bin/s226-cli";
+          program = "${self.packages.${system}.s226-hr}/bin/s226-cli";
         };
         s226 = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.s226}/bin/s226";
+          program = "${self.packages.${system}.s226}/bin/s226";
         };
         s226-bumble = {
           type = "app";
-          program = "${self.packages.${pkgs.system}.s226-bumble}/bin/s226-bumble";
+          program = "${self.packages.${system}.s226-bumble}/bin/s226-bumble";
         };
       });
 
-      devShells = forAllSystems (pkgs: {
+      devShells = forAllSystems ({ pkgs, system }: {
         default = pkgs.mkShell {
-          inputsFrom = [ self.packages.${pkgs.system}.s226-hr ];
+          inputsFrom = [ self.packages.${system}.s226-hr ];
         };
       });
     };
