@@ -59,6 +59,8 @@ private:
   void rememberWatch(const QString& address);
   void onStateChanged(s226::WatchState state, const QString& detail);
   void onHeartRate(int bpm);
+  void toggleHeartRate();
+  void updateHrButton();
   void checkStale();
   void updateActivity();
   void loadHistory();
@@ -81,6 +83,7 @@ private:
   QComboBox* controllerBox_ = nullptr;
   QComboBox* watchBox_ = nullptr;
   QPushButton* connectButton_ = nullptr;
+  QPushButton* hrButton_ = nullptr;
   QPushButton* bpButton_ = nullptr;
   QCheckBox* metronomeBox_ = nullptr;
   QSlider* volumeSlider_ = nullptr;
@@ -107,6 +110,7 @@ private:
   QString controllerOverride_;
   s226::WatchState state_ = s226::WatchState::Stopped;
   bool active_ = false;
+  bool hrRunning_ = false; // user/watch HR measurement wanted
   bool bpRunning_ = false;
   QElapsedTimer sinceSample_;
   QTimer staleTimer_;

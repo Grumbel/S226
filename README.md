@@ -45,6 +45,7 @@ selection, watch address and Connect.
   `time,bpm,spm`). The graph is refilled from it on restart.
 - **Metronome** that clicks on every beat; the heart icon pulses along
   either way.
+- **Start / Stop heart rate** for continuous measurement (starts on connect).
 - **Blood pressure** measurement on demand.
 - The status bar shows the watch's **battery** (hover for the firmware
   version).

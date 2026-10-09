@@ -29,6 +29,8 @@ public:
   void stop();
   bool isConnected() const { return connected_; }
 
+  void startHeartRate();
+  void stopHeartRate();
   void startBloodPressure();
   void stopBloodPressure();
   void send(Bytes command);

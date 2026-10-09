@@ -223,6 +223,13 @@ void MainWindow::buildUi() {
   liveBarLay->addWidget(volumeSlider_);
   liveBarLay->addSpacing(12);
 
+  hrButton_ = new QPushButton(tr("Start heart rate"), liveBar);
+  hrButton_->setToolTip(tr("Start or stop continuous heart-rate measurement on the watch"));
+  hrButton_->setEnabled(false);
+  connect(hrButton_, &QPushButton::clicked, this, &MainWindow::toggleHeartRate);
+  liveBarLay->addWidget(hrButton_);
+  liveBarLay->addSpacing(8);
+
   bpButton_ = new QPushButton(tr("Blood pressure"), liveBar);
   bpButton_->setToolTip(tr("Start a blood-pressure measurement on the watch"));
   bpButton_->setEnabled(false);
@@ -446,10 +453,14 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
   const bool connected = (state == s226::WatchState::Connected);
   setTabsEnabled(connected);
   bpButton_->setEnabled(connected);
+  hrButton_->setEnabled(connected);
   if (!connected) lastBpm_ = 0;
   updateTray();
   if (connected && !detail.isEmpty()) rememberWatch(detail);
   if (connected) {
+    // WatchBridge starts with startHeartRate=true; mirror that in the UI.
+    hrRunning_ = true;
+    updateHrButton();
     // Auto-load the visible feature tab once connected.
     if (tabs_->currentWidget() == settingsTab_) settingsTab_->onShown();
     else if (tabs_->currentWidget() == alarmsTab_) alarmsTab_->onShown();
@@ -460,14 +471,41 @@ void MainWindow::onStateChanged(s226::WatchState state, const QString& detail) {
     updateActivity();
     view_->setStale(true);
     metronome_.setBpm(0);
+    hrRunning_ = false;
+    updateHrButton();
     if (bpRunning_) {
       bpRunning_ = false;
       bpButton_->setText(tr("Blood pressure"));
       view_->setSecondary({});
     }
   }
-  view_->setStatus(state == s226::WatchState::Connected ? tr("Measuring...") : text);
+  if (state == s226::WatchState::Connected)
+    view_->setStatus(hrRunning_ ? tr("Measuring...") : tr("Heart rate stopped"));
+  else
+    view_->setStatus(text);
   if (state == s226::WatchState::Error) appendLog(text);
+}
+
+void MainWindow::toggleHeartRate() {
+  if (!bridge_.isConnected()) return;
+  if (hrRunning_) {
+    bridge_.stopHeartRate();
+    hrRunning_ = false;
+    metronome_.setBpm(0);
+    view_->setStatus(tr("Heart rate stopped"));
+    appendLog(tr("Heart-rate measurement stopped"));
+  } else {
+    bridge_.startHeartRate();
+    hrRunning_ = true;
+    view_->setStatus(tr("Measuring..."));
+    appendLog(tr("Heart-rate measurement started"));
+  }
+  updateHrButton();
+}
+
+void MainWindow::updateHrButton() {
+  if (!hrButton_) return;
+  hrButton_->setText(hrRunning_ ? tr("Stop heart rate") : tr("Start heart rate"));
 }
 
 void MainWindow::onHeartRate(int bpm) {

@@ -68,6 +68,12 @@ void WatchBridge::stop() {
   watch_->stop();
 }
 
+void WatchBridge::startHeartRate() {
+  if (watch_) watch_->startHeartRate();
+}
+void WatchBridge::stopHeartRate() {
+  if (watch_) watch_->stopHeartRate();
+}
 void WatchBridge::startBloodPressure() { watch_->startBloodPressure(); }
 void WatchBridge::stopBloodPressure() { watch_->stopBloodPressure(); }
 
