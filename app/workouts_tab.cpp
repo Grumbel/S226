@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include "ui_icons.hpp"
 #include <QTreeWidget>
 #include <QHeaderView>
 #include <QTreeWidgetItem>
@@ -25,6 +26,7 @@ void WorkoutsTab::buildUi() {
   auto* lay = new QVBoxLayout(this);
   auto* row = new QHBoxLayout;
   fetchBtn_ = new QPushButton(tr("Fetch workouts"), this);
+  setButtonIcon(fetchBtn_, QStringLiteral("fetch"));
   status_ = new QLabel(this);
   connect(fetchBtn_, &QPushButton::clicked, this, &WorkoutsTab::fetch);
   row->addWidget(fetchBtn_);

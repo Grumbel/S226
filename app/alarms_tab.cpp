@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include "ui_icons.hpp"
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTimeEdit>
@@ -79,6 +80,7 @@ std::optional<proto::Alarm> alarmDialog(QWidget* parent, const proto::Alarm& ini
 
   auto* allBtn = new QPushButton(QObject::tr("All days"), &dlg);
   auto* noneBtn = new QPushButton(QObject::tr("Clear"), &dlg);
+  setButtonIcon(noneBtn, QStringLiteral("clear"));
   auto* quick = new QHBoxLayout;
   quick->addWidget(allBtn);
   quick->addWidget(noneBtn);
@@ -133,11 +135,15 @@ void AlarmsTab::buildUi() {
   auto* lay = new QVBoxLayout(this);
   auto* btn = new QHBoxLayout;
   refreshBtn_ = new QPushButton(tr("Refresh"), this);
+  setButtonIcon(refreshBtn_, QStringLiteral("refresh"));
   refreshBtn_->setToolTip(tr("Reload alarms from the watch"));
   addBtn_ = new QPushButton(tr("Add"), this);
+  setButtonIcon(addBtn_, QStringLiteral("add"));
   addBtn_->setToolTip(tr("Create a new alarm"));
   editBtn_ = new QPushButton(tr("Edit"), this);
+  setButtonIcon(editBtn_, QStringLiteral("edit"));
   deleteBtn_ = new QPushButton(tr("Delete"), this);
+  setButtonIcon(deleteBtn_, QStringLiteral("delete"));
   status_ = new QLabel(this);
   connect(refreshBtn_, &QPushButton::clicked, this, &AlarmsTab::refresh);
   connect(addBtn_, &QPushButton::clicked, this, &AlarmsTab::addAlarm);

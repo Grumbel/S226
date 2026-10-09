@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include "ui_icons.hpp"
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -26,6 +27,7 @@ void SleepTab::buildUi() {
   for (int d = 0; d <= 7; ++d)
     dayBox_->addItem(d == 0 ? tr("Last night / today") : tr("%1 day(s) ago").arg(d), d);
   fetchBtn_ = new QPushButton(tr("Fetch"), this);
+  setButtonIcon(fetchBtn_, QStringLiteral("fetch"));
   status_ = new QLabel(this);
   connect(fetchBtn_, &QPushButton::clicked, this, &SleepTab::fetch);
   row->addWidget(new QLabel(tr("Day:"), this));

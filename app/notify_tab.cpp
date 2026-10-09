@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include "ui_icons.hpp"
 #include <QSpinBox>
 #include <QHeaderView>
 #include <QTableWidget>
@@ -48,6 +49,7 @@ void NotifyTab::buildUi() {
         int(i));
   messageType_->setCurrentIndex(int(proto::MessageType::Other));
   sendBtn_ = new QPushButton(tr("Send message"), msgBox);
+  setButtonIcon(sendBtn_, QStringLiteral("send"));
   sendBtn_->setToolTip(tr("Show this text on the watch (type must be enabled in Settings)"));
   connect(sendBtn_, &QPushButton::clicked, this, &NotifyTab::sendMessage);
   msgRow->addWidget(messageEdit_, 1);
@@ -149,8 +151,10 @@ void NotifyTab::buildUi() {
   callName_->setClearButtonEnabled(true);
   connect(callName_, &QLineEdit::returnPressed, this, &NotifyTab::sendCall);
   callBtn_ = new QPushButton(tr("Ring"), callBox);
+  setButtonIcon(callBtn_, QStringLiteral("call"));
   callBtn_->setToolTip(tr("Show the incoming-call screen with this name"));
   endCallBtn_ = new QPushButton(tr("End call"), callBox);
+  setButtonIcon(endCallBtn_, QStringLiteral("clear"));
   endCallBtn_->setToolTip(tr("Dismiss the call screen on the watch"));
   connect(callBtn_, &QPushButton::clicked, this, &NotifyTab::sendCall);
   connect(endCallBtn_, &QPushButton::clicked, this, &NotifyTab::endCall);
@@ -171,9 +175,13 @@ void NotifyTab::buildUi() {
   contactLay->addWidget(contactsTable_);
   auto* contactBtns = new QHBoxLayout;
   contactAddBtn_ = new QPushButton(tr("Add"), contactBox);
+  setButtonIcon(contactAddBtn_, QStringLiteral("add"));
   contactRemoveBtn_ = new QPushButton(tr("Remove"), contactBox);
+  setButtonIcon(contactRemoveBtn_, QStringLiteral("delete"));
   contactPushBtn_ = new QPushButton(tr("Push to watch"), contactBox);
+  setButtonIcon(contactPushBtn_, QStringLiteral("contact"));
   contactClearBtn_ = new QPushButton(tr("Clear on watch"), contactBox);
+  setButtonIcon(contactClearBtn_, QStringLiteral("clear"));
   contactPushBtn_->setToolTip(tr("Write the table as the watch contact list (0x72)."));
   contactClearBtn_->setToolTip(tr("Push an empty contact list to clear the watch."));
   connect(contactAddBtn_, &QPushButton::clicked, this, &NotifyTab::addContactRow);
@@ -209,11 +217,13 @@ void NotifyTab::buildUi() {
   form->addRow(tr("Volume"), musicVolume_);
   auto* musicRow = new QHBoxLayout;
   musicPushBtn_ = new QPushButton(tr("Push to watch"), musicBox);
+  setButtonIcon(musicPushBtn_, QStringLiteral("send"));
   musicPushBtn_->setToolTip(
       tr("Send now-playing metadata so the watch can show the track "
          "(enable the music feature in Settings if needed)"));
   connect(musicPushBtn_, &QPushButton::clicked, this, &NotifyTab::pushNowPlaying);
   musicPullBtn_ = new QPushButton(tr("From player"), musicBox);
+  setButtonIcon(musicPullBtn_, QStringLiteral("music"));
   musicPullBtn_->setToolTip(tr("Fill the fields from the active MPRIS media player"));
   connect(musicPullBtn_, &QPushButton::clicked, this, &NotifyTab::pullFromMpris);
   musicLastAction_ = new QLabel(tr("Watch keys: —"), musicBox);

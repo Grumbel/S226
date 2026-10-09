@@ -316,7 +316,8 @@ void MainWindow::buildUi() {
   bar->addWidget(controllerBox_);
 
   auto* refresh = new QToolButton(bar);
-  refresh->setIcon(QIcon::fromTheme("view-refresh"));
+  refresh->setIcon(QIcon(QStringLiteral(":/menu-refresh.svg")));
+  refresh->setIconSize(QSize(18, 18));
   refresh->setText(QStringLiteral("↻"));
   refresh->setToolTip(tr("Look for USB Bluetooth controllers again"));
   connect(refresh, &QToolButton::clicked, this, &MainWindow::refreshControllers);

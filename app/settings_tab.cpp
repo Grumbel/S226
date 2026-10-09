@@ -8,6 +8,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include "ui_icons.hpp"
 #include <QScrollArea>
 #include <QSpinBox>
 #include <QTimeEdit>
@@ -31,8 +32,10 @@ void SettingsTab::buildUi() {
 
   auto* btnRow = new QHBoxLayout;
   refreshBtn_ = new QPushButton(tr("Refresh"), this);
+  setButtonIcon(refreshBtn_, QStringLiteral("refresh"));
   refreshBtn_->setToolTip(tr("Load current settings from the watch"));
   applyBtn_ = new QPushButton(tr("Apply"), this);
+  setButtonIcon(applyBtn_, QStringLiteral("apply"));
   applyBtn_->setToolTip(tr("Write the form values to the watch"));
   status_ = new QLabel(this);
   status_->setWordWrap(true);
