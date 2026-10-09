@@ -3,16 +3,15 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-63.1-desktop-notify-handled-94f9363.bundle`
-- Tip: `8205b28` desktop notify: monitor filter always HANDLED
+- Latest bundle: artifacts `s226-65.1-contacts-gui-94f9363.bundle`
+- Tip: `aa8898e` Contacts GUI on Notify tab
 
 ## Done in this sequence
 
 ### GUI
 - Tabs: Live, Settings, Alarms, Notify, History, Sleep, Workouts
 - Settings: weather status, features, message types, …
-- Notify: messages, call, music, MPRIS forward/pull/auto-push, desktop
-  notification forward (`org.freedesktop.Notifications`)
+- Notify: messages, call, contacts table, music, MPRIS, desktop notify
 - System tray; single-instance (override `--multi-instance`)
 
 ### Library / CLI
