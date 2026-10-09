@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-75.1-hr-stopped-status-94f9363.bundle`
-- Tip: `aa5ca97` Heart rate stopped status when HR off
+- Latest bundle: artifacts `s226-77.1-about-https-94f9363.bundle`
+- Tip: `4319e34` About dialog full https URL
 
 ## Done in this sequence
 
