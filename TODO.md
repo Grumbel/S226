@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-53.1-docs-refresh-94f9363.bundle`
-- Tip: `5a97fa0` README/man/AppStream/AGENTS refresh
+- Latest bundle: artifacts `s226-55.1-fix-desktop-notify-94f9363.bundle`
+- Tip: `f669f3d` fix desktop notification forwarder bugs
 
 ## Done in this sequence
 
