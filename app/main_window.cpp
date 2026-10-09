@@ -102,7 +102,7 @@ MainWindow::MainWindow(const QString& controllerOverride, const QString& address
             else
               text = body;
             if (!app.isEmpty() && !text.isEmpty())
-              text = app + QStringLiteral(" — ") + text;
+              text = app + QStringLiteral("\n") + text;
             else if (!app.isEmpty())
               text = app;
             text = text.simplified();
