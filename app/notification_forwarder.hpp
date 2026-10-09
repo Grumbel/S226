@@ -32,7 +32,6 @@ signals:
 private:
   void startListening();
   void stopListening();
-  void onSocketActivated(QSocketDescriptor fd, QSocketNotifier::Type type);
   void dispatch();
 
   struct DBusState;

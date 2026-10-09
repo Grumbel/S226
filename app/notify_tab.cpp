@@ -51,7 +51,7 @@ void NotifyTab::buildUi() {
   desktopNotifyForward_ = new QCheckBox(tr("Forward desktop notifications to the watch"), this);
   desktopNotifyForward_->setToolTip(
       tr("When enabled and connected, org.freedesktop.Notifications messages "
-         "(most Linux apps) are shown on the watch as type "other". "
+         "(most Linux apps) are shown on the watch as type 'other'. "
          "Requires session-bus eavesdrop permission."));
   if (desktopNotify_) {
     desktopNotifyForward_->setChecked(desktopNotify_->isEnabled());

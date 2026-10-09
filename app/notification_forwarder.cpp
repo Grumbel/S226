@@ -139,7 +139,7 @@ void NotificationForwarder::startListening() {
   }
 
   notifier_ = new QSocketNotifier(fd, QSocketNotifier::Read, this);
-  connect(notifier_, &QSocketNotifier::activated, this, &NotificationForwarder::onSocketActivated);
+  connect(notifier_, &QSocketNotifier::activated, this, [this](QSocketDescriptor) { dispatch(); });
 
   // Dispatch anything already queued.
   dispatch();
@@ -163,10 +163,6 @@ void NotificationForwarder::stopListening() {
     dbus_ = nullptr;
   }
   listening_ = false;
-}
-
-void NotificationForwarder::onSocketActivated(QSocketDescriptor, QSocketNotifier::Type) {
-  dispatch();
 }
 
 void NotificationForwarder::dispatch() {
