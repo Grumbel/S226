@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-79.1-menu-icons-94f9363.bundle`
-- Tip: `35d388e` menu and tray action icons
+- Latest bundle: artifacts `s226-81.1-classic-icons-94f9363.bundle`
+- Tip: `69bf6b9` classic shaded icons + icon+text buttons
 
 ## Done in this sequence
 
