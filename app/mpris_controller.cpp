@@ -133,7 +133,7 @@ std::optional<s226::protocol::NowPlaying> MprisController::currentTrack() const 
 
   const QVariant vol = getPlayerProperty(svc, QStringLiteral("Volume"));
   if (vol.isValid()) {
-    np.volume = qBound(vol.toDouble() * 100.0);
+    np.volume = qRound(vol.toDouble() * 100.0);
     if (np.volume < 0) np.volume = 0;
     if (np.volume > 100) np.volume = 100;
   }
