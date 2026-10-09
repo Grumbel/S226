@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-49.1-fix-notify-build-94f9363.bundle`
-- Tip: `50f7888` fix notify tooltip + socket notifier build
+- Latest bundle: artifacts `s226-51.1-fix-notify-build-94f9363.bundle`
+- Tip: `19751ec` fix notify tooltip + socket notifier build
 
 ## Done in this sequence
 
