@@ -701,6 +701,68 @@ Action history(int daysAgo) {
   };
 }
 
+// Sleep sessions for one day (0 = last night / today).
+Action sleepDay(int daysAgo) {
+  return [daysAgo](Session& s) {
+    auto isFrame = [&](const Bytes& v) {
+      auto f = proto::decodeSleepFrame(v);
+      return f && f->dayIndex == daysAgo;
+    };
+    auto v = s.request(proto::sleepRead(daysAgo), isFrame);
+    if (!v) return fail("the sleep request");
+    std::vector<Bytes> frames;
+    for (;;) {
+      auto f = *proto::decodeSleepFrame(*v);
+      frames.push_back(*v);
+      if (f.packetIndex == 0) break;
+      v = s.next(isFrame);
+      if (!v) {
+        std::fprintf(stderr, "Sleep transfer stopped after %zu frame(s)\n", frames.size());
+        return false;
+      }
+    }
+    auto day = proto::decodeSleepDay(frames);
+    if (!day) {
+      std::fprintf(stderr, "Could not decode sleep data\n");
+      return false;
+    }
+    if (day->empty) {
+      std::printf("No sleep data for day %d.\n", daysAgo);
+      return true;
+    }
+    for (size_t i = 0; i < day->sessions.size(); ++i) {
+      const auto& ss = day->sessions[i];
+      auto fmt = [](const proto::SleepTime& t) {
+        char buf[40];
+        if (t.year > 0 && t.month > 0)
+          std::snprintf(buf, sizeof buf, "%04d-%02d-%02d %02d:00", t.year, t.month, t.day,
+                        t.hour);
+        else
+          std::snprintf(buf, sizeof buf, "%02d:00", t.hour);
+        return std::string(buf);
+      };
+      std::printf("Sleep %zu: %s → %s, deep %d min, light %d min", i + 1, fmt(ss.sleepDown).c_str(),
+                  fmt(ss.sleepUp).c_str(), ss.deepMinutes, ss.lightMinutes);
+      if (ss.otherMinutes > 0) std::printf(", other %d min", ss.otherMinutes);
+      if (ss.totalMinutes > 0) std::printf(", total %d min", ss.totalMinutes);
+      if (ss.quality > 0) std::printf(", quality %d", ss.quality);
+      if (ss.wakeCount > 0) std::printf(", wakes %d", ss.wakeCount);
+      if (ss.v1) {
+        std::printf(" [v1 scores: up=%d deep=%d eff=%d fall=%d time=%d]", ss.getUpScore,
+                    ss.deepScore, ss.efficiencyScore, ss.fallAsleepScore, ss.sleepTimeScore);
+      }
+      std::printf("\n");
+      if (!ss.stages.empty()) {
+        const size_t show = std::min(ss.stages.size(), size_t(120));
+        std::printf("  stages (%zu pts, %d min each): %s%s\n", ss.stages.size(),
+                    ss.onePointDuration, ss.stages.substr(0, show).c_str(),
+                    ss.stages.size() > show ? "…" : "");
+      }
+    }
+    return true;
+  };
+}
+
 bool workouts(Session& s) {
   int found = 0;
   for (int slot = 1; slot <= proto::kWorkoutSlots; ++slot) {
@@ -842,6 +904,7 @@ void usage(const char* argv0) {
       "  -i, --info              firmware and battery\n"
       "  -s, --settings          show the watch settings\n"
       "      --history[=DAY]     5-minute activity slots as CSV; DAY 0 = today (default)\n"
+      "      --sleep[=DAY]       sleep sessions for DAY (0 = last night / today)\n"
       "      --workouts          workouts recorded in sport mode\n"
       "      --notify TEXT       show a message on the watch\n"
       "      --call NAME         ring with an incoming call from NAME (20 s at most)\n"
@@ -888,6 +951,7 @@ int main(int argc, char** argv) {
     OptBp = 1000,
     OptSend,
     OptHistory,
+    OptSleep,
     OptWorkouts,
     OptSedentary,
     OptHrAlarm,
@@ -917,6 +981,7 @@ int main(int argc, char** argv) {
                              {"info", no_argument, nullptr, 'i'},
                              {"settings", no_argument, nullptr, 's'},
                              {"history", optional_argument, nullptr, OptHistory},
+                             {"sleep", optional_argument, nullptr, OptSleep},
                              {"workouts", no_argument, nullptr, OptWorkouts},
                              {"sedentary", required_argument, nullptr, OptSedentary},
                              {"hr-alarm", required_argument, nullptr, OptHrAlarm},
@@ -963,6 +1028,17 @@ int main(int argc, char** argv) {
         }
       }
       actions.push_back(history(day));
+      break;
+    }
+    case OptSleep: {
+      int day = 0;
+      if (optarg) {
+        char tail = 0;
+        if (std::sscanf(optarg, "%d%c", &day, &tail) != 1 || day < 0 || day > 7) {
+          return bad("day (0-7)", optarg);
+        }
+      }
+      actions.push_back(sleepDay(day));
       break;
     }
     case OptSedentary: {
