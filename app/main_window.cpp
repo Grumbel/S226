@@ -662,7 +662,7 @@ void MainWindow::showAbout() {
          "<p>Live heart rate, settings, sleep, workouts and notifications "
          "for the S226 (H-Band / Veepoo) fitness watch over Bluetooth LE.</p>"
          "<p>Uses a USB Bluetooth controller directly (no BlueZ).</p>"
-         "<p><a href=\"https://github.com/Grumbel/S226\">github.com/Grumbel/S226</a></p>")
+         "<p><a href=\"https://github.com/Grumbel/S226\">https://github.com/Grumbel/S226</a></p>")
           .arg(QApplication::applicationVersion()));
 }
 
