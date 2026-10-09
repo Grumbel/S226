@@ -14,6 +14,7 @@ qt_add_executable(s226-hr
   notify_tab.cpp
   history_tab.cpp
   workouts_tab.cpp
+  sleep_tab.cpp
 )
 qt_add_resources(s226-hr icons
   PREFIX /

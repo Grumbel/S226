@@ -27,6 +27,7 @@ class AlarmsTab;
 class NotifyTab;
 class HistoryTab;
 class WorkoutsTab;
+class SleepTab;
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -85,6 +86,7 @@ private:
   NotifyTab* notifyTab_ = nullptr;
   HistoryTab* historyTab_ = nullptr;
   WorkoutsTab* workoutsTab_ = nullptr;
+  SleepTab* sleepTab_ = nullptr;
 
   QSystemTrayIcon* tray_ = nullptr;
   QMenu* trayMenu_ = nullptr;

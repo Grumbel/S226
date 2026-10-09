@@ -36,6 +36,7 @@
 #include "settings_tab.hpp"
 #include "trend_graph.hpp"
 #include "workouts_tab.hpp"
+#include "sleep_tab.hpp"
 #include "s226/usb.hpp"
 
 namespace {
@@ -206,6 +207,8 @@ void MainWindow::buildUi() {
   tabs_->addTab(notifyTab_, tr("Notify"));
   historyTab_ = new HistoryTab(bridge_, tabs_);
   tabs_->addTab(historyTab_, tr("History"));
+  sleepTab_ = new SleepTab(bridge_, tabs_);
+  tabs_->addTab(sleepTab_, tr("Sleep"));
   workoutsTab_ = new WorkoutsTab(bridge_, tabs_);
   tabs_->addTab(workoutsTab_, tr("Workouts"));
 
@@ -300,6 +303,7 @@ void MainWindow::setTabsEnabled(bool connected) {
   notifyTab_->setConnected(connected);
   historyTab_->setConnected(connected);
   workoutsTab_->setConnected(connected);
+  sleepTab_->setConnected(connected);
 }
 
 void MainWindow::refreshControllers() {
