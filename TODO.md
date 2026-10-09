@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-69.1-notify-newline-94f9363.bundle`
-- Tip: `2422fd3` desktop notify: newline after app name
+- Latest bundle: artifacts `s226-71.1-hr-start-stop-94f9363.bundle`
+- Tip: `43d6480` Live tab Start/Stop heart rate
 
 ## Done in this sequence
 
