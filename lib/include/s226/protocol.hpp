@@ -430,4 +430,35 @@ struct SleepDay {
 // when the frame list is empty or contains no valid 0xE0 frames.
 std::optional<SleepDay> decodeSleepDay(const std::vector<Bytes>& frames);
 
+// ---- Weather status (0xC8) ------------------------------------------
+// Enable/disable the weather face data path. Content push (forecasts) is
+// a separate multi-packet stream under the same header; only status is
+// fully specified here.
+
+struct WeatherStatus {
+  bool ok = false;
+  bool open = false;
+  int type = 0; // firmware-specific weather type byte
+};
+
+Bytes weatherStatusRead();                          // c8 02
+Bytes weatherStatusWrite(bool open, int type = 0); // c8 03 <open> <type>
+std::optional<WeatherStatus> decodeWeatherStatus(std::span<const uint8_t> value);
+
+// ---- Contacts (0x72) ------------------------------------------------
+// Push is multi-packet: 72 01 <index 1-based> <total> <16 payload bytes>.
+// Each contact is an 0xA0 record with A1 id, A2 nickname, A3 telephone.
+
+struct Contact {
+  uint8_t id = 1;
+  std::string name;
+  std::string phone;
+};
+
+// One or more 20-byte ATT writes. Send in order (~120 ms apart if lossy).
+std::vector<Bytes> contactWritePackets(const std::vector<Contact>& contacts);
+
+Bytes contactDelete(uint8_t id); // 72 04 <id>
+Bytes contactMove(uint8_t fromId, uint8_t toId); // 72 03 <from> <to>
+
 } // namespace s226::protocol

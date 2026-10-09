@@ -360,6 +360,42 @@ int main() {
     CHECK(s.stages == "12");
   }
 
+  // Weather status
+  {
+    auto wr = weatherStatusRead();
+    CHECK(wr.size() == 2 && wr[0] == 0xC8 && wr[1] == 0x02);
+    auto ww = weatherStatusWrite(true, 1);
+    CHECK(ww.size() == 4 && ww[0] == 0xC8 && ww[1] == 0x03 && ww[2] == 1 && ww[3] == 1);
+    auto ws = decodeWeatherStatus(frame({0xC8, 0x02, 0x01, 0x00, 0x00, 0x01, 0x02}));
+    CHECK(ws && ws->ok && ws->open && ws->type == 2);
+    ws = decodeWeatherStatus(frame({0xC8, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00}));
+    CHECK(ws && ws->ok && !ws->open);
+    CHECK(!decodeWeatherStatus(frame({0xC8, 0x01, 0x01})));
+  }
+
+  // Contacts write packets
+  {
+    Contact c;
+    c.id = 1;
+    c.name = "Alice";
+    c.phone = "+15551212";
+    auto pkts = contactWritePackets({c});
+    CHECK(!pkts.empty());
+    CHECK(pkts[0].size() == 20);
+    CHECK(pkts[0][0] == 0x72 && pkts[0][1] == 0x01);
+    CHECK(pkts[0][2] == 0x01); // index
+    CHECK(pkts[0][3] == static_cast<uint8_t>(pkts.size()));
+    // First payload byte should be 0xA0 record tag
+    CHECK(pkts[0][4] == 0xA0);
+    auto del = contactDelete(3);
+    CHECK(del.size() == 3 && del[0] == 0x72 && del[1] == 0x04 && del[2] == 3);
+    auto mv = contactMove(1, 2);
+    CHECK(mv.size() == 4 && mv[0] == 0x72 && mv[1] == 0x03 && mv[2] == 1 && mv[3] == 2);
+    // Empty list still yields one zero-padded packet
+    auto empty = contactWritePackets({});
+    CHECK(empty.size() == 1 && empty[0][0] == 0x72 && empty[0][1] == 0x01);
+  }
+
   if (failures == 0) std::puts("all protocol checks passed");
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

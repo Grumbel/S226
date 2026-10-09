@@ -663,4 +663,89 @@ std::optional<SleepDay> decodeSleepDay(const std::vector<Bytes>& frames) {
   return day;
 }
 
+// ---- Weather status (0xC8) ------------------------------------------
+
+Bytes weatherStatusRead() { return {0xC8, 0x02}; }
+
+Bytes weatherStatusWrite(bool open, int type) {
+  return {0xC8, 0x03, static_cast<uint8_t>(open ? 1 : 0), u8(type)};
+}
+
+std::optional<WeatherStatus> decodeWeatherStatus(std::span<const uint8_t> v) {
+  // Reply: c8 <sub> <ok> <crc_lo> <crc_hi> <isOpen> <type> ...
+  // Read uses sub 2; set echoes sub 3. Accept either when length is enough.
+  if (v.size() < 7 || v[0] != 0xC8) return std::nullopt;
+  if (v[1] != 0x02 && v[1] != 0x03) return std::nullopt;
+  WeatherStatus s;
+  s.ok = v[2] == 0x01;
+  s.open = v[5] != 0;
+  s.type = v[6];
+  return s;
+}
+
+// ---- Contacts (0x72) ------------------------------------------------
+
+namespace {
+
+Bytes contactRecord(const Contact& c) {
+  // 0xA0 + len LE (includes 3-byte header) + TLVs
+  Bytes fields;
+  // A1 id (int type1: type, 0x01, value)
+  fields.push_back(0xA1);
+  fields.push_back(0x01);
+  fields.push_back(c.id);
+  // A2 nickname UTF-8
+  std::string name = c.name;
+  if (name.size() > 20) name.resize(20);
+  fields.push_back(0xA2);
+  fields.push_back(u8(static_cast<int>(name.size())));
+  fields.insert(fields.end(), name.begin(), name.end());
+  // A3 telephone UTF-8
+  std::string phone = c.phone;
+  if (phone.size() > 22) phone.resize(22);
+  fields.push_back(0xA3);
+  fields.push_back(u8(static_cast<int>(phone.size())));
+  fields.insert(fields.end(), phone.begin(), phone.end());
+
+  const size_t recLen = 3 + fields.size(); // A0 + len16 + fields
+  Bytes rec;
+  rec.push_back(0xA0);
+  rec.push_back(static_cast<uint8_t>(recLen & 0xFF));
+  rec.push_back(static_cast<uint8_t>((recLen >> 8) & 0xFF));
+  rec.insert(rec.end(), fields.begin(), fields.end());
+  return rec;
+}
+
+} // namespace
+
+std::vector<Bytes> contactWritePackets(const std::vector<Contact>& contacts) {
+  Bytes body;
+  for (const Contact& c : contacts) {
+    Bytes rec = contactRecord(c);
+    body.insert(body.end(), rec.begin(), rec.end());
+  }
+  // At least one packet even for an empty list (clear).
+  constexpr size_t kChunk = 16;
+  const size_t total = std::max<size_t>(1, (body.size() + kChunk - 1) / kChunk);
+  std::vector<Bytes> packets;
+  packets.reserve(total);
+  for (size_t i = 0; i < total; ++i) {
+    // Contacts: [2]=index, [3]=total (opposite of weather content framing)
+    Bytes p{0x72, 0x01, u8(static_cast<int>(i + 1)), u8(static_cast<int>(total))};
+    const size_t off = i * kChunk;
+    if (off < body.size()) {
+      const size_t n = std::min(kChunk, body.size() - off);
+      p.insert(p.end(), body.begin() + static_cast<std::ptrdiff_t>(off),
+               body.begin() + static_cast<std::ptrdiff_t>(off + n));
+    }
+    p.resize(20, 0);
+    packets.push_back(std::move(p));
+  }
+  return packets;
+}
+
+Bytes contactDelete(uint8_t id) { return {0x72, 0x04, id}; }
+
+Bytes contactMove(uint8_t fromId, uint8_t toId) { return {0x72, 0x03, fromId, toId}; }
+
 } // namespace s226::protocol
