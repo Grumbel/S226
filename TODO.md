@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: artifacts `s226-67.1-notify-filters-94f9363.bundle`
-- Tip: `5ea83cc` desktop notify filters (urgency/category/app)
+- Latest bundle: artifacts `s226-69.1-notify-newline-94f9363.bundle`
+- Tip: `2422fd3` desktop notify: newline after app name
 
 ## Done in this sequence
 
