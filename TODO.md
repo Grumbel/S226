@@ -3,8 +3,8 @@
 ## Current tip
 
 - Work-line base: `94f9363`
-- Latest bundle: (pending) sleep + weather/contacts
-- Tip: weather status + contacts push after sleep tracking
+- Latest bundle: artifacts `s226-29.1-weather-contacts-94f9363.bundle`
+- Tip: `7130688` weather status + contacts (see `git log 94f9363..HEAD`)
 
 ## Done in this sequence
 
