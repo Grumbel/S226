@@ -167,6 +167,21 @@ Set the personal data the watch uses for distance and calories: height
 in cm, weight in kg, age, sex, daily step goal and sleep goal in minutes
 (default 480).
 .TP
+.BR \-\-weather " [" \fIon\fR | \fIoff\fR ]
+Show or set weather status on the watch (0xC8).
+Without an argument, reads the current status.
+.TP
+.BR \-\-contacts " [" \fIname\fB:\fIphone\fR,... ]
+Push a contact list to the watch.
+Each entry is
+.IR name : phone .
+An empty value clears the list.
+.TP
+.BR \-\-contact\-delete " " \fIid\fR
+Delete contact
+.I id
+on the watch.
+.TP
 .BR \-\-music " " \fItitle\fR[\fB/\fIartist\fR[\fB/\fIalbum\fR]][\fB;playing=\fR0|1][\fB;vol=\fIN\fR]
 Push now-playing metadata to the watch so it can show the current track.
 Optional

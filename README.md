@@ -85,6 +85,8 @@ order after connecting, print to stdout, and exit:
 s226-cli --info --settings              # firmware, battery, settings
 s226-cli --history=1 > yesterday.csv    # 5-minute slots (steps, HR, ...)
 s226-cli --sleep=0                       # last night's sleep sessions
+s226-cli --weather on                    # enable weather status
+s226-cli --contacts 'Ada:+1555,Bob:+1566'  # push contacts
 s226-cli --workouts                     # sport-mode sessions, per minute
 s226-cli --alarms                       # list alarms on the watch
 s226-cli --alarm 1=07:30/mon,tue,wed,thu,fri

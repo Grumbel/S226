@@ -262,6 +262,8 @@ values. "✓" means the capture agrees with the APK name.
 | `b9 02 … fd 51` | multi-alarm | ✓ read with CRC in the last two bytes; reply `b9 01 00 01 02 …` (no alarms) |
 | `ef 01 fe` | battery manager | no reply |
 | `72 02 ff ff` | contacts | no reply |
+| `c8 02` / `c8 03` | weather status read/set | on/off + type (see VeePoo §26) |
+| `72 01` multi-packet | contact list push | TLV A0/A1/A2/A3 records |
 | `f4 02 02 00 01` | change watch language | ✓ reply `f4 01 01 01 02` |
 | `e0 00` / `e0 01` | sleep today / yesterday | ✓ empty replies (no sleep was recorded); the old reading as "mode select" was wrong |
 | `d1 <first u16 LE> <day>` | original data (5-min slots) | ✓ one frame per slot from `first` to the end of day `day` (0 = today; H-Band asked from 0xC0 = the last slot it had). Any other command except `d8`/`a0` aborts the transfer |
