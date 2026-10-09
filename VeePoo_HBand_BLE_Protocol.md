@@ -1995,17 +1995,485 @@ Exact numeric condition-code table is not fully expanded in the APK strings (lik
 
 ---
 
-## 38. Protocol coverage status
+## 38. Protocol coverage status (updated)
 
 | Area | Status |
 |------|--------|
 | Auth, GATT, notifications C1/C2/AD | Complete |
 | Screen B1/B4/B8/C7 | Complete |
 | Alarms AB/B9, countdown B2 | Complete |
-| Contacts 0x72, GPS 0x70 | Complete (TLV + fixed-point) |
+| Sleep E0 classic + V1 | Complete |
+| Contacts 0x72, GPS 0x70 | Complete |
 | Music 0x99 + 0x01 keys | Complete |
-| ECG/PTT 0x93 | Control + result layout complete; raw ADC sample scaling device-dependent |
-| UI transfer 0x50/0xCC | Base info + block ACK complete |
-| Weather status + framing | Complete; inner condition codes partial |
-| Women, drink, long-seat, HR warning, BP, language, find watch | Complete |
+| ECG/PTT 0x93 | Control + result layout complete |
+| UI transfer 0x50/0xCC | Base + block ACK complete |
+| Person info 0xA3 | Complete (§39) |
+| Long-seat / night-turn / check-wear | Complete (§40) |
+| Women / drink / all-settings | Complete (§41) |
+| BP measure 0x90 / model 0x91 | Complete (§42) |
+| Continuous HR 0xD0 | Complete (§42) |
+| 5-min original TLV tags | Complete (§43) |
+| Sport model 0xD3–D5 | Header + open/close complete (§44) |
+| Device function 0xA7 bitmap | Major flags documented (§45) |
+| Weather condition codes | Partial |
+| OAD/DFU full image transfer | Enter mode only |
+| BT classic 0x71, device debug 0xF1 | Untouched |
+
+---
+
+## 39. Person info (`0xA3`)
+
+**Header:** `0xA3` (`HEAD_PERSON_INFO` = -93)
+
+### Write (9 bytes used)
+
+```
+[0]  0xA3
+[1]  height (cm)
+[2]  weight (kg)
+[3]  age
+[4]  sex: 0 = female, 1 = male
+[5]  target steps high
+[6]  target steps low     (uint16 BE)
+[7]  target sleep high
+[8]  target sleep low     (uint16 BE, minutes; app stores hours × 60)
+```
+
+**Source:** `PersonHandle.getPersonCmd()`.
+
+Profile helper: `PERSON_INFO_SETTING = {0xA3, 1,1,1,1,1,1}` (generic template).
+
+---
+
+## 40. Check-wear, long-seat, night turn-wrist
+
+### Check-wear (`0xE2`)
+
+| Command | Bytes |
+|---------|-------|
+| Open | `E2 01` |
+| Close | `E2 00` |
+| Read | `E2 02` |
+
+### Long-seat / sedentary (`0xE1`)
+
+```
+[0]  0xE1
+[1]  start hour
+[2]  start minute
+[3]  end hour
+[4]  end minute
+[5]  how-long (minutes of sitting before remind; default 60)
+[6]  open: 1 = on, 0 = off, 2 = read
+```
+
+Defaults in app: start 08:00 or 14:00, end 18:00, interval 60 min.
+
+`getLongSeatTime(startMinOfDay, endMinOfDay, howLong, openFlag)`.
+
+Profile helpers: `LONG_SEAT_OPEN/CLOSE/READ` (read uses flag 2 in [6]).
+
+### Night turn-wrist (`0xAA`)
+
+```
+[0]  0xAA
+[1]  open: 1 / 0
+[2]  start hour
+[3]  start minute
+[4]  end hour
+[5]  end minute
+[6]  level / sensitivity (minutes mod 60 used as value)
+```
+
+Also: `NIGHT_TURN_OPEN = {AA 01}`, `CLOSE = {AA 00}`, `READ = {AA 02 00 00 01 01}`.
+
+**Source:** `LongseatHanlder`, `NightTurnWristHandler`, `CheckWearHanlder`.
+
+---
+
+## 41. Women, drink, all-settings (night SpO₂)
+
+### Women / menses (`0x85`)
+
+```
+[0]  0x85
+[1]  status:
+       0 = none
+       1 = menses
+       2 = pre-ready (preconception)
+       3 = pregnant (preing)
+       4 = mama (postpartum)
+       5 = read
+[2–5] last menses date (4 bytes from getDateCmd) — when status ≠ 0
+[6]   menses interval (days)
+[7]   duration (days); also copied to [13]
+[8–11] baby birthday (4 bytes) — when status is pre-ready / pregnant / mama
+[12]  baby sex byte
+```
+
+### Drink data (`0xD7`)
+
+**Read:** `{0xD7}` only.
+
+Reply multi-packet; end when package indices are `0xFF`/`0xFF` or `0`/`0` or first index is 0.  
+Parsed into timed drink events (`DrinkHandler.saveDrink`).
+
+### All-settings / night SpO₂ monitor (`0xB3`)
+
+```
+[0]  0xB3
+[1]  type: 0 = SPO2H_NIGHT_MONITOR
+[2]  operate (set/read)
+[3]  start hour
+[4]  start minute
+[5]  end hour
+[6]  end minute
+[7]  open state (0/1)
+```
+
+**Source:** `WomenHandler`, `DrinkHandler`, `AllSettingHanlder`.
+
+---
+
+## 42. BP measure and continuous HR
+
+### BP measure (`0x90`) — uses BP service `F0020001`
+
+| Command | Bytes |
+|---------|-------|
+| Read normal | `90 01 00` |
+| Read private | `90 01 01` |
+| Close normal | `90 00 00` |
+| Close private | `90 00 01` |
+
+### BP model (`0x91`)
+
+| Command | Bytes |
+|---------|-------|
+| Normal model | `91 00 00 00` |
+| Private model | `91 01 00 00` |
+| Read | `91 02 00 00` |
+
+(Documented earlier; confirmed from `BleProfile`.)
+
+### Continuous / current HR (`0xD0`)
+
+| Command | Bytes |
+|---------|-------|
+| Open continuous | `D0 01` |
+| Close | `D0 00` |
+
+Live samples arrive as notifies on the main Read characteristic while open.
+
+**Source:** `BPHandler`, `HeartHandler`, `BleProfile`.
+
+---
+
+## 43. Original / 5-minute data (`0xD1`) and TLV tags
+
+**Header:** `0xD1` (`HEAD_ORIGAL` = -47)
+
+### Read
+
+```
+D1 01 00 <day>     // day 0 = today, 1 = yesterday, …
+```
+
+Profile: `ORIGA_READ_TODAY = {D1, 1, 0, 0}`, etc.
+
+Also DF variant: `0xDF` (`HEAD_ORIGAL_DF` = -33) same shape.
+
+### Stream end
+
+Day finished when:
+- `[1]==[3]` and `[2]==[4]`, or
+- both index pairs are 0
+
+Packets accumulate; payload is reassembled then parsed as **5-minute TLV** (`FiveMinuteHandler`).
+
+### 5-minute TLV tags (inside day blob)
+
+| Tag | Hex | Content |
+|-----|-----|---------|
+| -79 | `0xB1` | Date block |
+| -78 | `0xB2` | Step block |
+| -77 | `0xB3` | Sleep block |
+| -76 | `0xB4` | Rate block |
+| -75 | `0xB5` | Heart block |
+| -74 | `0xB6` | Breath block |
+| -73 | `0xB7` | HRV block |
+| -72 | `0xB8` | BP block |
+| -71 | `0xB9` | SpO₂ block |
+| -70 | `0xBA` | Sleep-sport block |
+| -69 | `0xBB` | Sleep-state block |
+| -68 | `0xBC` | Reboot block |
+
+Each: `tag`, `len` (1 byte), `len` payload bytes.
+
+SpO₂ original history uses separate header **`0xD2`** (`HEAD_SPO2H_ORIGAL`) with the same day-index read pattern.
+
+**Source:** `OriginalHander`, `FiveMinuteHandler`, `Spo2hOriginalHander`.
+
+---
+
+## 44. Sport model (`0xD3` / `0xD4` / `0xD5`)
+
+| Header | Role |
+|--------|------|
+| `0xD5` (`HEAD_SPORT_MODEL_OPENCLOSE` = -43) | Open / close sport mode |
+| `0xD4` (`HEAD_SPORT_MODEL_ORIGIN` = -44) | Origin / sample stream |
+| `0xD3` (`HEAD_SPORT_MODEL_CRC` = -45) | CRC / integrity |
+
+Also: `HEAD_READ_CURRENT_SPORT_SPORT_MODEL = 0xD8` (`-40`) for current sport HR: `{D8, 0}`.
+
+### Header packet fields (`handlerSportHeader`)
+
+Parsed from multi-byte LE concatenations:
+- Start / end `TimeBean` (year, mon, day, h, m, s)
+- Distance, calories, steps (32-bit style hex concat)
+- Duration / pause fields
+- Sport type / flags at end of header
+
+Origin packets follow while mode is open; CRC packets validate blocks.
+
+**Source:** `SportModelHander`.
+
+---
+
+## 45. Device function / capabilities (`0xA7`)
+
+**Header:** `0xA7` (`HEAD_DEVICE_FUNCTION` = -89)
+
+Watch notifies a capability bitmap after auth. `DeviceFucitonHandler` maps reply bytes to `SpUtil` flags. Major flags (byte indices from handler):
+
+| Meaning | SpUtil / effect |
+|---------|-----------------|
+| Data history days | `FUCTION_DATA_DAY` (default 3) |
+| Countdown support | `FUCTION_COUNTDOWN` |
+| HID | `FUCTION_HID` |
+| Sport model | `FUCTION_SPORT_MODEL`, `SPORT_MODEl_DAY` |
+| Screen light time | `FUCTION_SCREENLIGNT_TIME` |
+| Precision sleep | `PRECISION_SLEEP_FUNCTION` |
+| ECG | `ECG_FUNCTION` |
+| Multi sport modes | `MULTSPORTMODE_FUNCTION` |
+| Night SpO₂ monitor | `FUCTION_SPOH2_NIGHT_MONITOR` |
+| FTG (fatigue) | `FUCTION_FTG` |
+| Msg post number | `MSGPOSTNUMBER` |
+| Heart warning | `FUCTION_HEARTWARING` |
+| Night turn setting | `FUCTION_NIGHTTURN_SETTING` |
+| Women function | `FUCTION_HAVE_WOMEN` |
+| Screen light UI | `HAVE_CONNECT_SCREENLIGHT` |
+
+Exact bit positions vary by firmware; clients should treat `0xA7` as “capability discovery” and enable UI/features from the parsed flags rather than hard-coding support.
+
+**Read:** typically issued as part of post-auth poll (same pattern as other settings reads).
+
+**Source:** `DeviceFucitonHandler`.
+
+---
+
+## 46. Misc quick commands
+
+| Feature | Header | Notes |
+|---------|--------|-------|
+| Find phone by watch | `0xB5` | Watch → phone event |
+| Take photo | `0xB6` | `B6 01` open / `B6 00` close |
+| Disconnect | `0xAF` | `AF 00` |
+| Battery manager | `0xEF` | Power management |
+| Low power notify | `0x03` | Watch → phone |
+| Auto-callback | `0x01` | Music keys / PTT (see §34) |
+| BT classic dual-mode | `0x71` | Not fully decoded |
+| Device debug | `0xF1` | Not decoded |
+| OAD enter | `0xA2` | `{A2, 0, 0, 1}` then Nordic OAD service |
+
+---
+
+## 47. Device function (`0xA7`) — full package map
+
+**Header:** `0xA7`. Multi-package reply discriminated by **`bArr[19]`**.
+
+### Package `bArr[19] == 0` (primary features)
+
+| Byte | Flag / value |
+|------|----------------|
+| 1 | BP support (`==1`) |
+| 2 | Drink (`==1`) |
+| 3 | Long-seat (`==1`) |
+| 5 | WeChat sport (`==1`) |
+| 6 | Camera (always sets camera function true in app) |
+| 8 | SpO₂ mode: `1/2/3/4/5/-2/-3` variants; `4`=breath-break, `-2`=breath-break-zero, `-3`=hide SpO₂ UI |
+| 7 | FTG (`==1`) |
+| 9 | msgPostNumber (if non-zero) |
+| 10 | Heart warning (`==1`) |
+| 11 | Night-turn setting (`==1`) |
+| 12 | Women function (`1/2/3`) |
+| 13 | Screen-light UI (`==1`) |
+| 15+ | Additional UI flags |
+
+### Package `bArr[19] == 2` (extended)
+
+| Byte | Flag / value |
+|------|----------------|
+| 1 | Countdown (`==1`) |
+| 2 | History data days (`FUCTION_DATA_DAY`, if ≠0) |
+| 3 | Nickname post number |
+| 4 | HID (`==1`) |
+| 5 | Sport model (0=off; else days count) |
+| 6 | Screen style count |
+| 7 | Breath rate support / type |
+| 8 | HRV support / type |
+| 9 | Weather type (`INT_WEATHER_TYPE`) + weather enable |
+| 12 | Screen light time function |
+| 13 | Precision sleep (`0`=off) |
+| 14 | Clear-data function value |
+| 15 | ECG (`0`=off) |
+| 16 | Multi-sport mode type |
+| 17 | Low-battery function |
+| 10 | **`INT_PROTICL_TYPE`** (classic vs sleep V1 etc.) |
+
+### Package `bArr[19] == 3` (big-data / contacts)
+
+| Byte | Flag |
+|------|------|
+| 1 | Big-data transfer type |
+| 4 | Contact support (`==1`) |
+
+Clients should parse all packages after auth and enable features from flags rather than hard-coding.
+
+---
+
+## 48. Drink events (`0xD7`) — event layout
+
+**Read:** `{0xD7}`
+
+**End of stream:** `[2]==[3]==0xFF`, or both 0, or `[1]==0`.
+
+### Classic event (`saveDrink`)
+
+```
+[1]   package index
+[2–3] progress / end markers
+[4]   start month
+[5]   start day
+[6]   start hour
+[7]   start minute
+[10]  end month
+[11]  end day
+(+ hour/minute for end in following bytes)
+```
+Year taken from phone system year.
+
+### Packed event (`saveDrinkWay2`)
+
+Two packed timestamps (16-bit fields):
+- Bytes `[3–4]` / `[5–6]`: start — year(12b) + month(4b); day(5b) + hour(5b) + minute(6b)
+- Bytes `[7–8]` / `[9–10]`: end — same packing
+- Byte `[11]`: type in high 4 bits, flag in low 4 bits (`getFirstBit16` / `getLastBit16`)
+
+Each event → `DrinkBean(start, end, type, flag)`.
+
+---
+
+## 49. Sport model origin samples (`0xD4`)
+
+### Read day stream
+
+Write `{0xD4, dayIndex}` then collect packets until `[1]==[3]` and `[2]==[4]`.
+
+### Block assembly
+
+- First **3 packets**: 14 payload bytes each from offset 6 → **42-byte header** (`handlerSportHeader`)
+- Remaining packets: origin samples (`handlerSportModelOriginBean`)
+
+### Origin sample fields (per packet)
+
+| Source | Meaning |
+|--------|---------|
+| `[1–2]` LE − 3 | Sequence / index A |
+| `[3–4]` LE − 3 | Sequence / index B |
+| `[6]` | **Heart rate** (valid 30–200 for average) |
+| `[7–8]` | Metric A (u16) |
+| `[9–10]` | Metric B (u16) |
+| `[11–12]` | Metric C (u16) |
+| `[13–14]` | Metric D (u16) |
+| `[15]` | Extra flag / value |
+
+App computes:
+- Average HR from samples with rate in 30–200  
+- `oxsporttimes = (count of rate ≤ 120) × 60` seconds  
+
+Header (42 bytes) holds start/stop times, distance, calories, steps, duration, sport type (see §44).
+
+### Open/close
+
+`0xD5` (`HEAD_SPORT_MODEL_OPENCLOSE`) — live sport session control (pairs with current sport HR `0xD8`).
+
+---
+
+## 50. Bluetooth classic dual-mode (`0x71`)
+
+**Header:** `0x71` (`HEAD_BLUETOOTH3` = 113)
+
+### Write — request dual-mode / classic pairing assist
+
+```
+[0]  0x71
+[1]  0x01
+[2]  0x00
+```
+
+Sent from `BindBluetooth3.openBlueTooth3()` over the normal BLE config characteristic. (Intent option string in the APK is mislabeled “读取血压模式”; the payload is Bluetooth3.)
+
+### App-side flow after the write
+
+1. Phone enables classic Bluetooth if needed.
+2. Starts discovery (`BluetoothAdapter.startDiscovery`).
+3. Matches the watch by MAC / name.
+4. Calls `BluetoothDevice.createBond()` for classic pairing (A2DP / headset profiles as available).
+5. Listens for:
+   - `android.bluetooth.device.action.FOUND`
+   - `android.bluetooth.device.action.BOND_STATE_CHANGED`
+   - `android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED`
+   - `BleBroadCast.BLUETOOTH_OPEN_CLOSE`
+
+No multi-byte data payload is exchanged on `0x71` beyond the 3-byte command in this APK. The command is a **trigger** for the watch to become discoverable / pairable on classic Bluetooth; actual bonding is standard Android classic BT.
+
+Reply action name: `BLUETOOTH3_OPRATE` (via `BleProfileUtil`).
+
+**Source:** `BindBluetooth3`, `BleProfile.HEAD_BLUETOOTH3`.
+
+---
+
+## 51. Device debug (`0xF1`)
+
+**Header:** `0xF1` (`HEAD_DEVICE_DEBUG` = -15)
+
+### Status in this APK
+
+| Item | Present? |
+|------|----------|
+| Header constant | Yes |
+| Broadcast action `DEVICE_DEBUG_OPRATE` | Yes (`BleProfileUtil` maps `-15` → this action) |
+| Packet builder / UI / handler class | **No** |
+
+There is **no** write template, read sequence, or dedicated handler class for `0xF1` in H+Band 2.0 4.9.4. The header is reserved in the dispatch table so notifies with `[0]==0xF1` would be broadcast as `device_debug_oprate`, but the app never constructs or consumes a defined layout.
+
+Likely uses (not confirmed here):
+- Factory / vendor debug channel
+- Watch-initiated diagnostic dumps
+- Firmware-only feature gated out of the consumer app
+
+**Practical guidance:** Ignore `0xF1` for a normal client. If a device emits it, log the raw 20 bytes; do not rely on a stable public schema from this APK.
+
+---
+
+## 52. Remaining intentionally thin
+
+1. **Weather icon condition code table** — not a fixed enum in the APK  
+2. **OAD full image transfer** — Nordic DFU/OAD after `0xA2` enter  
+3. **UI face binary file format** — transfer protocol done; file layout is firmware  
+4. **Sport metric A–D physical units** — device-dependent  
+5. **`0xF1` payload schema** — header only; no app-side definition  
+
+**Bluetooth classic (`0x71`) is documented** as the dual-mode pairing trigger above.
 
