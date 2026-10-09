@@ -68,9 +68,8 @@ music, …) and which message types the watch shows. Refresh / Apply.
   **From player** fills the form from the active player; **Push system
   track changes to the watch** keeps metadata in sync.
 - **Desktop notifications**: forward
-  `org.freedesktop.Notifications` (most Linux apps) to the watch as
-  message type `other` (needs that type enabled and session-bus
-  eavesdrop permission).
+  `org.freedesktop.Notifications` to the watch as type `other`, with
+  filters for urgency, transient/OSD hints, app name and category.
 
 **History** — 5-minute activity slots for today or a previous day
 (steps, distance, calories, activity, HR).

@@ -9,18 +9,13 @@
 
 #include <dbus/dbus.h>
 
-// Match rule used by dbus-monitor / KDE Connect for Notify method calls.
-// BecomeMonitor treats rules as eavesdrop=true automatically.
-// KDE Connect uses this form; BecomeMonitor treats rules as eavesdrop=true.
-static const char* kNotifyMatch =
-    "interface='org.freedesktop.Notifications',member='Notify'";
+#include <cstring>
 
-// Deprecated fallback when BecomeMonitor is unavailable.
+// KDE Connect form; BecomeMonitor treats rules as eavesdrop=true.
+static const char* kNotifyMatch = "interface='org.freedesktop.Notifications',member='Notify'";
+
 static const char* kNotifyMatchEavesdrop =
-    "type='method_call',"
-    "interface='org.freedesktop.Notifications',"
-    "member='Notify',"
-    "eavesdrop='true'";
+    "type='method_call',interface='org.freedesktop.Notifications',member='Notify',eavesdrop='true'";
 
 namespace {
 
@@ -56,27 +51,98 @@ QString stripMarkup(QString s) {
   return out.simplified();
 }
 
-bool parseNotify(DBusMessage* msg, QString* app, QString* summary, QString* body) {
+// Parse freedesktop hints dict: category, urgency, transient, synchronous OSD.
+void parseHints(DBusMessageIter* dictIt, QString* category, int* urgency, bool* transient,
+                bool* synchronous) {
+  *urgency = 1; // Normal default per spec when omitted
+  *transient = false;
+  *synchronous = false;
+  category->clear();
+
+  if (dbus_message_iter_get_arg_type(dictIt) != DBUS_TYPE_ARRAY) return;
+  DBusMessageIter entries;
+  dbus_message_iter_recurse(dictIt, &entries);
+  while (dbus_message_iter_get_arg_type(&entries) == DBUS_TYPE_DICT_ENTRY) {
+    DBusMessageIter entry;
+    dbus_message_iter_recurse(&entries, &entry);
+    if (dbus_message_iter_get_arg_type(&entry) != DBUS_TYPE_STRING) {
+      dbus_message_iter_next(&entries);
+      continue;
+    }
+    const char* key = nullptr;
+    dbus_message_iter_get_basic(&entry, &key);
+    if (!dbus_message_iter_next(&entry)) {
+      dbus_message_iter_next(&entries);
+      continue;
+    }
+    // Variant
+    if (dbus_message_iter_get_arg_type(&entry) != DBUS_TYPE_VARIANT) {
+      dbus_message_iter_next(&entries);
+      continue;
+    }
+    DBusMessageIter var;
+    dbus_message_iter_recurse(&entry, &var);
+    const int t = dbus_message_iter_get_arg_type(&var);
+
+    if (key && std::strcmp(key, "urgency") == 0 && t == DBUS_TYPE_BYTE) {
+      unsigned char u = 1;
+      dbus_message_iter_get_basic(&var, &u);
+      *urgency = static_cast<int>(u);
+    } else if (key && std::strcmp(key, "category") == 0 && t == DBUS_TYPE_STRING) {
+      *category = readString(&var);
+    } else if (key && std::strcmp(key, "transient") == 0 && t == DBUS_TYPE_BOOLEAN) {
+      dbus_bool_t b = FALSE;
+      dbus_message_iter_get_basic(&var, &b);
+      *transient = b;
+    } else if (key && (std::strcmp(key, "x-canonical-private-synchronous") == 0 ||
+                       std::strcmp(key, "synchronous") == 0)) {
+      // Volume/brightness OSDs set x-canonical-private-synchronous (string value).
+      *synchronous = true;
+    }
+
+    dbus_message_iter_next(&entries);
+  }
+}
+
+struct ParsedNotify {
+  QString app;
+  QString summary;
+  QString body;
+  QString category;
+  int urgency = 1;
+  bool transient = false;
+  bool synchronous = false;
+};
+
+bool parseNotify(DBusMessage* msg, ParsedNotify* out) {
   // Signature: susssasa{sv}i
-  //   app_name, replaces_id, app_icon, summary, body, actions, hints, expire
   DBusMessageIter it;
   if (!dbus_message_iter_init(msg, &it)) return false;
-  *app = readString(&it);
+  out->app = readString(&it);
   if (!dbus_message_iter_next(&it)) return false;
   if (dbus_message_iter_get_arg_type(&it) != DBUS_TYPE_UINT32) return false;
-  skip(&it);
+  skip(&it); // replaces_id
   if (dbus_message_iter_get_arg_type(&it) != DBUS_TYPE_STRING) return false;
-  skip(&it);
-  *summary = stripMarkup(readString(&it));
+  skip(&it); // app_icon
+  out->summary = stripMarkup(readString(&it));
   if (!dbus_message_iter_next(&it)) return false;
-  *body = stripMarkup(readString(&it));
-  return !summary->isEmpty() || !body->isEmpty() || !app->isEmpty();
+  out->body = stripMarkup(readString(&it));
+  if (!dbus_message_iter_next(&it)) {
+    return !out->summary.isEmpty() || !out->body.isEmpty() || !out->app.isEmpty();
+  }
+  // actions array — skip
+  if (dbus_message_iter_get_arg_type(&it) == DBUS_TYPE_ARRAY) skip(&it);
+  else
+    return !out->summary.isEmpty() || !out->body.isEmpty() || !out->app.isEmpty();
+
+  if (dbus_message_iter_get_arg_type(&it) == DBUS_TYPE_ARRAY)
+    parseHints(&it, &out->category, &out->urgency, &out->transient, &out->synchronous);
+
+  return !out->summary.isEmpty() || !out->body.isEmpty() || !out->app.isEmpty();
 }
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-// Worker: owns the private D-Bus connection and runs on a background thread.
 // ---------------------------------------------------------------------------
 class NotificationForwarder::Worker : public QObject {
   Q_OBJECT
@@ -98,8 +164,6 @@ public slots:
       return;
     }
     dbus_connection_set_exit_on_disconnect(conn_, FALSE);
-    // Required so method_calls addressed to the notification daemon are
-    // delivered to this monitor connection as well (KDE Connect does this).
     dbus_connection_set_route_peer_messages(conn_, TRUE);
 
     if (!dbus_connection_add_filter(conn_, &Worker::filter, this, nullptr)) {
@@ -118,9 +182,7 @@ public slots:
       teardown();
       QMetaObject::invokeMethod(
           owner_, "onListenFailed", Qt::QueuedConnection,
-          Q_ARG(QString,
-                QStringLiteral("BecomeMonitor and eavesdrop match both failed "
-                               "(is a session bus available?)")));
+          Q_ARG(QString, QStringLiteral("BecomeMonitor and eavesdrop match both failed")));
       return;
     }
 
@@ -129,8 +191,6 @@ public slots:
       notifier_ = new QSocketNotifier(fd, QSocketNotifier::Read, this);
       connect(notifier_, &QSocketNotifier::activated, this, &Worker::onReadable);
     }
-    // Bound polling so a quiet socket does not starve us if the notifier
-    // misses an edge.
     timer_ = new QTimer(this);
     timer_->setInterval(250);
     connect(timer_, &QTimer::timeout, this, &Worker::onReadable);
@@ -140,8 +200,7 @@ public slots:
     QMetaObject::invokeMethod(owner_, "onListening", Qt::QueuedConnection, Q_ARG(QString, mode));
     QMetaObject::invokeMethod(
         owner_, "onDebug", Qt::QueuedConnection,
-        Q_ARG(QString, QStringLiteral("desktop-notify: ready (mode=%1) — try: notify-send 'S226' 'test'")
-                           .arg(mode)));
+        Q_ARG(QString, QStringLiteral("desktop-notify: ready (mode=%1)").arg(mode)));
   }
 
   void stop() { teardown(); }
@@ -149,7 +208,6 @@ public slots:
 private slots:
   void onReadable() {
     if (!conn_) return;
-    // Cap work per tick to keep this thread responsive.
     for (int i = 0; i < 64; ++i) {
       if (!dbus_connection_read_write_dispatch(conn_, 0)) break;
     }
@@ -158,16 +216,15 @@ private slots:
 private:
   static DBusHandlerResult filter(DBusConnection*, DBusMessage* msg, void* data) {
     auto* self = static_cast<Worker*>(data);
-    // dbus-monitor / KDE Connect: monitors must ALWAYS return HANDLED so
-    // libdbus never tries to send a reply (monitors are not allowed to send;
-    // doing so gets the connection disconnected). See dbus bug 1719.
     if (self && self->conn_ &&
         dbus_message_is_method_call(msg, "org.freedesktop.Notifications", "Notify")) {
-      QString app, summary, body;
-      if (parseNotify(msg, &app, &summary, &body)) {
+      ParsedNotify n;
+      if (parseNotify(msg, &n)) {
         QMetaObject::invokeMethod(self->owner_, "onNotify", Qt::QueuedConnection,
-                                  Q_ARG(QString, app), Q_ARG(QString, summary),
-                                  Q_ARG(QString, body));
+                                  Q_ARG(QString, n.app), Q_ARG(QString, n.summary),
+                                  Q_ARG(QString, n.body), Q_ARG(QString, n.category),
+                                  Q_ARG(int, n.urgency), Q_ARG(bool, n.transient),
+                                  Q_ARG(bool, n.synchronous));
       } else {
         QMetaObject::invokeMethod(
             self->owner_, "onDebug", Qt::QueuedConnection,
@@ -181,7 +238,6 @@ private:
     DBusMessage* call = dbus_message_new_method_call(
         DBUS_SERVICE_DBUS, DBUS_PATH_DBUS, DBUS_INTERFACE_MONITORING, "BecomeMonitor");
     if (!call) return false;
-
     const char* rules[] = {kNotifyMatch};
     const char** rulesPtr = rules;
     dbus_uint32_t flags = 0;
@@ -190,10 +246,8 @@ private:
       dbus_message_unref(call);
       return false;
     }
-
     DBusError err;
     dbus_error_init(&err);
-    // Block only this worker thread (not the GUI). Short timeout.
     DBusMessage* reply = dbus_connection_send_with_reply_and_block(conn_, call, 1500, &err);
     dbus_message_unref(call);
     if (!reply) {
@@ -254,8 +308,6 @@ private:
 #include "notification_forwarder.moc"
 
 // ---------------------------------------------------------------------------
-// Public facade (GUI thread)
-// ---------------------------------------------------------------------------
 
 NotificationForwarder::NotificationForwarder(QObject* parent) : QObject(parent) {
   thread_ = new QThread(this);
@@ -268,6 +320,12 @@ NotificationForwarder::NotificationForwarder(QObject* parent) : QObject(parent) 
 
   QSettings s;
   enabled_ = s.value(QStringLiteral("notify/forwardDesktop"), false).toBool();
+  minUrgency_ = s.value(QStringLiteral("notify/filterMinUrgency"), int(Normal)).toInt();
+  skipTransient_ = s.value(QStringLiteral("notify/filterSkipTransient"), true).toBool();
+  skipSynchronous_ = s.value(QStringLiteral("notify/filterSkipSynchronous"), true).toBool();
+  blockedApps_ = s.value(QStringLiteral("notify/filterBlockedApps")).toStringList();
+  blockedCategories_ = s.value(QStringLiteral("notify/filterBlockedCategories")).toStringList();
+
   if (enabled_) {
     QTimer::singleShot(0, this, [this]() {
       if (enabled_) emit startWorker();
@@ -277,7 +335,6 @@ NotificationForwarder::NotificationForwarder(QObject* parent) : QObject(parent) 
 
 NotificationForwarder::~NotificationForwarder() {
   emit stopWorker();
-  // Give the worker a moment to drop the connection before quitting the thread.
   if (thread_) {
     thread_->quit();
     thread_->wait(2000);
@@ -291,7 +348,6 @@ void NotificationForwarder::setEnabled(bool on) {
   s.setValue(QStringLiteral("notify/forwardDesktop"), on);
   if (on) {
     emit startWorker();
-    // If the worker was already up, onListening will not fire again.
     if (listening_) emit enabledChanged(true);
   } else {
     listening_ = false;
@@ -301,10 +357,105 @@ void NotificationForwarder::setEnabled(bool on) {
   }
 }
 
-void NotificationForwarder::onNotify(const QString& app, const QString& summary, const QString& body) {
+void NotificationForwarder::setMinUrgency(int urgency) {
+  urgency = qBound(0, urgency, 2);
+  if (minUrgency_ == urgency) return;
+  minUrgency_ = urgency;
+  QSettings s;
+  s.setValue(QStringLiteral("notify/filterMinUrgency"), minUrgency_);
+  emit filtersChanged();
+}
+
+void NotificationForwarder::setSkipTransient(bool on) {
+  if (skipTransient_ == on) return;
+  skipTransient_ = on;
+  QSettings s;
+  s.setValue(QStringLiteral("notify/filterSkipTransient"), on);
+  emit filtersChanged();
+}
+
+void NotificationForwarder::setSkipSynchronous(bool on) {
+  if (skipSynchronous_ == on) return;
+  skipSynchronous_ = on;
+  QSettings s;
+  s.setValue(QStringLiteral("notify/filterSkipSynchronous"), on);
+  emit filtersChanged();
+}
+
+void NotificationForwarder::setBlockedApps(const QStringList& apps) {
+  QStringList cleaned;
+  for (QString a : apps) {
+    a = a.trimmed();
+    if (!a.isEmpty()) cleaned.push_back(a);
+  }
+  if (cleaned == blockedApps_) return;
+  blockedApps_ = cleaned;
+  QSettings s;
+  s.setValue(QStringLiteral("notify/filterBlockedApps"), blockedApps_);
+  emit filtersChanged();
+}
+
+void NotificationForwarder::setBlockedCategories(const QStringList& cats) {
+  QStringList cleaned;
+  for (QString c : cats) {
+    c = c.trimmed();
+    if (!c.isEmpty()) cleaned.push_back(c);
+  }
+  if (cleaned == blockedCategories_) return;
+  blockedCategories_ = cleaned;
+  QSettings s;
+  s.setValue(QStringLiteral("notify/filterBlockedCategories"), blockedCategories_);
+  emit filtersChanged();
+}
+
+bool NotificationForwarder::passesFilters(const QString& app, const QString& category, int urgency,
+                                          bool transient, bool synchronous, QString* why) const {
+  if (urgency < minUrgency_) {
+    *why = QStringLiteral("urgency %1 < min %2").arg(urgency).arg(minUrgency_);
+    return false;
+  }
+  if (skipTransient_ && transient) {
+    *why = QStringLiteral("transient");
+    return false;
+  }
+  if (skipSynchronous_ && synchronous) {
+    *why = QStringLiteral("synchronous OSD");
+    return false;
+  }
+  for (const QString& block : blockedApps_) {
+    if (app.contains(block, Qt::CaseInsensitive)) {
+      *why = QStringLiteral("blocked app ~%1").arg(block);
+      return false;
+    }
+  }
+  if (!category.isEmpty()) {
+    for (const QString& block : blockedCategories_) {
+      if (category.compare(block, Qt::CaseInsensitive) == 0 ||
+          category.startsWith(block + QLatin1Char('.'), Qt::CaseInsensitive)) {
+        *why = QStringLiteral("blocked category %1").arg(category);
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void NotificationForwarder::onNotify(const QString& app, const QString& summary, const QString& body,
+                                     const QString& category, int urgency, bool transient,
+                                     bool synchronous) {
   if (!enabled_) return;
-  emit debugLog(QStringLiteral("desktop-notify: seen Notify app=%1 summary=%2 body=%3")
-                    .arg(app, summary, body.left(80)));
+  QString why;
+  if (!passesFilters(app, category, urgency, transient, synchronous, &why)) {
+    emit debugLog(QStringLiteral("desktop-notify: skipped (%1) app=%2 cat=%3 urg=%4 — %5")
+                      .arg(why, app, category.isEmpty() ? QStringLiteral("-") : category)
+                      .arg(urgency)
+                      .arg(summary.left(60)));
+    return;
+  }
+  emit debugLog(QStringLiteral("desktop-notify: forward app=%1 cat=%2 urg=%3 — %4")
+                    .arg(app, category.isEmpty() ? QStringLiteral("-") : category)
+                    .arg(urgency)
+                    .arg(summary.left(60)));
   emit notificationReceived(app, summary, body);
 }
 

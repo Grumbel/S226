@@ -189,11 +189,19 @@ With
 enabled, metadata is
 sent to the watch whenever the active player changes track or play state.
 With
-.B Forward desktop notifications to the watch
-enabled, session-bus
-notifications (org.freedesktop.Notifications) are shown on the watch
-as message type
+.B Forward to the watch
+enabled under
+.BR "Desktop notifications" ,
+session-bus notifications are shown on the watch as message type
 .BR other .
+Filters use freedesktop hints: minimum
+.B urgency
+(Low/Normal/Critical), skip
+.B transient
+and
+.B synchronous OSD
+(volume/brightness), and block lists for app names and categories
+(device, email, im, network, presence, transfer, …).
 Enable the
 .B music
 feature under Settings if the watch ignores metadata.

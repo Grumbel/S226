@@ -14,6 +14,7 @@ class QLabel;
 class QCheckBox;
 class QSpinBox;
 class QTableWidget;
+class QComboBox;
 
 class NotifyTab : public QWidget {
   Q_OBJECT
@@ -55,6 +56,11 @@ private:
   QCheckBox* mprisForward_ = nullptr;
   QCheckBox* mprisAutoPush_ = nullptr;
   QCheckBox* desktopNotifyForward_ = nullptr;
+  QComboBox* notifyUrgency_ = nullptr;
+  QCheckBox* notifySkipTransient_ = nullptr;
+  QCheckBox* notifySkipSync_ = nullptr;
+  QLineEdit* notifyBlockedApps_ = nullptr;
+  QLineEdit* notifyBlockedCats_ = nullptr;
   QTableWidget* contactsTable_ = nullptr;
   QPushButton* contactAddBtn_ = nullptr;
   QPushButton* contactRemoveBtn_ = nullptr;

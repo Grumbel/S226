@@ -55,22 +55,92 @@ void NotifyTab::buildUi() {
   msgRow->addWidget(sendBtn_);
   lay->addWidget(msgBox);
 
-  desktopNotifyForward_ = new QCheckBox(tr("Forward desktop notifications to the watch"), this);
+  auto* deskBox = new QGroupBox(tr("Desktop notifications"), this);
+  auto* deskLay = new QVBoxLayout(deskBox);
+  desktopNotifyForward_ = new QCheckBox(tr("Forward to the watch"), deskBox);
   desktopNotifyForward_->setToolTip(
-      tr("When enabled and connected, org.freedesktop.Notifications messages "
-         "(most Linux apps) are shown on the watch as type 'other'. "
-         "Requires session-bus eavesdrop permission."));
+      tr("Listen for org.freedesktop.Notifications.Notify on the session bus "
+         "and show matching ones on the watch as message type 'other'."));
+  deskLay->addWidget(desktopNotifyForward_);
+
+  auto* filterForm = new QFormLayout;
+  notifyUrgency_ = new QComboBox(deskBox);
+  notifyUrgency_->addItem(tr("All (including Low)"), 0);
+  notifyUrgency_->addItem(tr("Normal and Critical"), 1);
+  notifyUrgency_->addItem(tr("Critical only"), 2);
+  notifyUrgency_->setToolTip(
+      tr("Freedesktop urgency hint: 0=Low, 1=Normal, 2=Critical. "
+         "Volume and brightness OSDs often use Low."));
+  filterForm->addRow(tr("Minimum urgency"), notifyUrgency_);
+
+  notifySkipSync_ = new QCheckBox(tr("Skip OSD / synchronous (volume, brightness)"), deskBox);
+  notifySkipSync_->setToolTip(
+      tr("Skip notifications with the x-canonical-private-synchronous hint "
+         "(used by many volume and brightness overlays)."));
+  filterForm->addRow(QString(), notifySkipSync_);
+
+  notifySkipTransient_ = new QCheckBox(tr("Skip transient notifications"), deskBox);
+  notifySkipTransient_->setToolTip(tr("Skip notifications marked transient in hints."));
+  filterForm->addRow(QString(), notifySkipTransient_);
+
+  notifyBlockedApps_ = new QLineEdit(deskBox);
+  notifyBlockedApps_->setPlaceholderText(tr("e.g. volume,gnome-settings-daemon"));
+  notifyBlockedApps_->setToolTip(
+      tr("Comma-separated app-name substrings to block (case-insensitive)."));
+  filterForm->addRow(tr("Blocked apps"), notifyBlockedApps_);
+
+  notifyBlockedCats_ = new QLineEdit(deskBox);
+  notifyBlockedCats_->setPlaceholderText(tr("e.g. device,transfer"));
+  notifyBlockedCats_->setToolTip(
+      tr("Comma-separated freedesktop categories to block "
+         "(exact or prefix, e.g. device blocks device.added). "
+         "Common: device, email, im, network, presence, transfer."));
+  filterForm->addRow(tr("Blocked categories"), notifyBlockedCats_);
+  deskLay->addLayout(filterForm);
+
   if (desktopNotify_) {
     desktopNotifyForward_->setChecked(desktopNotify_->isEnabled());
     connect(desktopNotifyForward_, &QCheckBox::toggled, desktopNotify_,
             &NotificationForwarder::setEnabled);
-    // Uncheck if setEnabled(true) fails (no eavesdrop / no session bus).
     connect(desktopNotify_, &NotificationForwarder::enabledChanged, desktopNotifyForward_,
             &QCheckBox::setChecked);
+
+    const int urg = desktopNotify_->minUrgency();
+    const int idx = notifyUrgency_->findData(urg);
+    notifyUrgency_->setCurrentIndex(idx >= 0 ? idx : 1);
+    connect(notifyUrgency_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+      if (desktopNotify_)
+        desktopNotify_->setMinUrgency(notifyUrgency_->currentData().toInt());
+    });
+
+    notifySkipSync_->setChecked(desktopNotify_->skipSynchronous());
+    connect(notifySkipSync_, &QCheckBox::toggled, desktopNotify_,
+            &NotificationForwarder::setSkipSynchronous);
+    notifySkipTransient_->setChecked(desktopNotify_->skipTransient());
+    connect(notifySkipTransient_, &QCheckBox::toggled, desktopNotify_,
+            &NotificationForwarder::setSkipTransient);
+
+    notifyBlockedApps_->setText(desktopNotify_->blockedApps().join(QStringLiteral(", ")));
+    connect(notifyBlockedApps_, &QLineEdit::editingFinished, this, [this]() {
+      if (!desktopNotify_) return;
+      desktopNotify_->setBlockedApps(
+          notifyBlockedApps_->text().split(QLatin1Char(','), Qt::SkipEmptyParts));
+    });
+    notifyBlockedCats_->setText(desktopNotify_->blockedCategories().join(QStringLiteral(", ")));
+    connect(notifyBlockedCats_, &QLineEdit::editingFinished, this, [this]() {
+      if (!desktopNotify_) return;
+      desktopNotify_->setBlockedCategories(
+          notifyBlockedCats_->text().split(QLatin1Char(','), Qt::SkipEmptyParts));
+    });
   } else {
     desktopNotifyForward_->setEnabled(false);
+    notifyUrgency_->setEnabled(false);
+    notifySkipSync_->setEnabled(false);
+    notifySkipTransient_->setEnabled(false);
+    notifyBlockedApps_->setEnabled(false);
+    notifyBlockedCats_->setEnabled(false);
   }
-  lay->addWidget(desktopNotifyForward_);
+  lay->addWidget(deskBox);
 
   auto* callBox = new QGroupBox(tr("Incoming call"), this);
   auto* callRow = new QHBoxLayout(callBox);
