@@ -25,6 +25,8 @@ nix run .#s226-cli              # heart rate in the terminal (-v: protocol log, 
 Wake the watch by pressing its button so that it advertises; the tools
 connect as soon as they see it.
 
+![s226-hr screenshots](docs/screenshot.png)
+
 ## s226-hr
 
 The window is organised as **tabs**. The toolbar always has controller
